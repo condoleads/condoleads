@@ -1,0 +1,32 @@
+◇ injected env (44) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
+# Semi-Detached whitespace pre-normalize snapshot
+# taken: 2026-07-05T10:51:17.273Z
+
+# Q1: rows with property_subtype <> btrim(property_subtype):
+  count: 69955
+
+# Q1b: split by standard_status:
+  Closed                      34066
+  Cancelled                   22931
+  Expired                     5834
+  Active                      3878
+  Withdrawn                   2432
+  null                        410
+  Active Under Contract       293
+  Pending                     108
+  Delete                      2
+  Incomplete                  1
+
+# Q2: 3 Active sample rows (for post-fix smoke):
+  {"id":"e4d6d035-f81e-4ad0-bb40-a3a6ac6d02c2","listing_key":"W13412844","unparsed_address":"54 St Clair Gardens, Toronto W03, ON M6E 3V4","property_type":"Residential Freehold","property_subtype":"Semi-Detached ","standard_status":"Active","transaction_type":"For Sale"}
+  {"id":"6f0072cb-d3c4-404e-8d35-b9f6732a9373","listing_key":"X12450779","unparsed_address":"612 W Tweedsmuir Avenue, Westboro - Hampton Park, ON K1Z 5P3","property_type":"Residential Freehold","property_subtype":"Semi-Detached ","standard_status":"Active","transaction_type":"For Sale"}
+  {"id":"db9f8877-a621-41d1-a2e9-c57a5a8affd5","listing_key":"X13111972","unparsed_address":"731-733 Partington Avenue, Windsor, ON N9B 2N6","property_type":"Residential Freehold","property_subtype":"Semi-Detached ","standard_status":"Active","transaction_type":"For Sale"}
+
+# Q3: distinct malformed subtype values (byte-level):
+  "Semi-Detached "       len=14 hex=53656d692d446574616368656420 n=69955
+
+# ROLLBACK (if migration must be reversed):
+#   No practical rollback — the fix is idempotent normalization.
+#   To simulate rollback for testing: SELECT id FROM the Q2 sample above, then
+#     UPDATE mls_listings SET property_subtype = 'Semi-Detached ' WHERE id IN (...);
+#   Real production data cannot be un-trimmed without re-syncing from PropTx source.

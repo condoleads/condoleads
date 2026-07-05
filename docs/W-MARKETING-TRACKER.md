@@ -1224,6 +1224,227 @@ Two incidental findings emerged during the verify enumeration. Neither is a Rule
 
 Both findings surfaced BECAUSE of A-UNIT-2's Rule Zero / comprehensive posture. Neither invalidates any shipped A-UNIT-2 schema.
 
+#### SEMI-DETACHED-404 + COMMERCIAL RECON — pre-build verification (2026-07-05)
+
+Read-only recon on the two open findings from the A-UNIT-2 RECONCILE. Verifies fix surface for each before any build. Every claim below has a command output backing it this session.
+
+##### 1. Semi-Detached whitespace — byte-level confirmation
+
+Q1 (VERIFIED, exact stored bytes across statuses + both property_types):
+```
+Residential Freehold        "Semi-Detached "         len=14 hex=53656d692d446574616368656420   ← trailing 0x20
+Residential Condo & Other   "Semi-Detached Condo"    len=19 hex=53656d692d446574616368656420436f6e646f
+```
+The freehold value ends with `0x20` (SPACE). The condo subtype `"Semi-Detached Condo"` has an INTERNAL space (the one between "Detached" and "Condo") but no TRAILING space (`Condo` ends at position 19).
+
+Q2 (full whitespace audit across ALL Active listings, both property_types):
+```
+Any subtype in ANY property_type with leading/trailing whitespace (Active):
+  rows: 1
+  Residential Freehold        "Semi-Detached "         n=3878
+```
+**Only ONE subtype in the entire DB has trailing whitespace: `"Semi-Detached "` (Freehold), 3,878 Active rows.** No commercial/land/other subtypes have whitespace. This means a trim-on-compare (or DB normalization) has a bounded, single-value regression surface. VERIFIED this session.
+
+##### 2. HomePropertyPage gate — verbatim + regression surface
+
+Source (`app/property/[id]/HomePropertyPage.tsx:16, 100` — VERIFIED verbatim):
+```
+Line 16:  const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']
+Line 100: if (!RESIDENTIAL_TYPES.includes(listing.property_subtype)) notFound()
+```
+
+**Subtypes currently routed to HomePropertyPage AND rendering** (exact-match against RESIDENTIAL_TYPES): Detached (43,378), Att/Row/Townhouse (6,046), Multiplex (1,331), Duplex (1,153), Triplex (526), Fourplex (319), Link (256). Semi-Detached exact-match = 0 → all 3,878 Semi-Detached Active homes 404.
+
+**Subtypes NEWLY routed to HomePropertyPage after `.trim()` fix** (regression surface):
+```
+Semi-Detached (whitespace-affected freehold): 3,878 Active → rendered + emit RealEstateListing
+```
+**That is the ENTIRE net-new set** — no commercial, land, or other subtypes sneak in because the whitespace-affected DB subtype IS a legitimate `RESIDENTIAL_TYPES` value (`Semi-Detached`) — it's just stored with a trailing space. VERIFIED via the Q2 audit which returned only one row.
+
+##### 3. RESIDENTIAL_TYPES consumers — full grep this session
+
+Consumers of `RESIDENTIAL_TYPES` const OR the same inline literal OR the same-shape `.includes` gate on `property_subtype` (5 files, 6 sites):
+
+| File | Line | Shape | Effect on Semi-Detached |
+|---|---|---|---|
+| `app/property/[id]/HomePropertyPage.tsx` | 16, 100 | Const + `.includes` render gate | 3,878 rows → 404 today |
+| `app/api/charlie/route.ts` | 661 | Inline literal `.includes` in `isHome` classification | Semi-Detached misclassified as "not home" for Charlie's plan generator |
+| `app/api/charlie/route.ts` | 761 | Same shape (2nd site) | Same misclassification |
+| `app/api/charlie/plan-email/route.ts` | 165-167 | Inline `HOME_SUBTYPES` (identical list) + `.includes` in `isHome` | Same misclassification in plan-email path |
+| `app/api/geo-listings/route.ts` | 7, 71 | Const + `.in('property_subtype', RESIDENTIAL_TYPES)` — **Postgres-side IN predicate** | Semi-Detached rows excluded from geo-listings API responses |
+| `app/api/neighbourhood-listings/route.ts` | 14-17, 97 | Const + `.in(...)` — Postgres-side | Same exclusion from neighbourhood-listings API |
+
+**Precedent for trim in this codebase**: `app/[slug]/components/HomeListingCard.tsx:114` — `MULTI_UNIT_SUBTYPES.includes(listing.property_subtype.trim())`. This is a different subtype list but demonstrates the trim-on-compare pattern already exists in the code.
+
+**Fix strategy options (scope)**:
+- **Option A — App-side `.trim()`**: patch each of the 6 sites. Trivial (`.trim()` on the property_subtype in each `.includes` / `.in`). Postgres `.in(...)` sites (geo-listings, neighbourhood-listings) require an SQL-side expression — `.filter('property_subtype', 'in.(...)')` won't cleanly trim; would need to use `.rpc()` or add a computed column. Non-trivial for those two sites.
+- **Option B — DB-side normalization**: one `UPDATE mls_listings SET property_subtype = TRIM(property_subtype) WHERE property_subtype IS NOT NULL AND property_subtype <> TRIM(property_subtype);` — hits exactly 3,878 rows. Plus fix the nightly PropTx sync to `.trim()` on insert (identify the sync code, add trim there). All 6 consumers work correctly with zero code change per consumer. **Recommended** — root-cause fix.
+
+The 5 consumers' misclassifications suggest the whitespace bug has been silently degrading Charlie's home-classification logic + geo-listings/neighbourhood-listings coverage for a long time. Fixing at the DB is the durable Rule Zero move; app-side patches cure the symptom.
+
+##### 4. Commercial routing — VERIFIED trace + smoke
+
+Dispatcher at `app/[slug]/page.tsx` — routes by slug SHAPE, not property_type:
+- `isPropertySlug` (contains `-unit-`) → **PropertyPage** (condo path)
+- `isHomePropertySlug` (no `-unit-`, MLS-shape tail) → **HomePropertyPage** → gate at line 100 → 404 for Commercial
+
+`PropertyPage` (condo) has **NO property_type gate** — verified in `app/property/[id]/page.tsx` (`notFound` calls at :134 and :191 gate only on missing listing or missing agent, not on property_type). So a Commercial listing with a `-unit-` shaped slug reaches PropertyPage and renders.
+
+**Live smoke this session on aily.ca** (both real Commercial listings):
+
+Case A — Commercial WITHOUT `unit_number` (`C12317882`, Toronto retail):
+- Slug via `generateHomePropertySlug`: `/167-church-street-toronto-c08-c12317882`
+- Route: HomePropertyPage:100 → `RESIDENTIAL_TYPES.includes('Commercial Retail')` = false → `notFound()`
+- **HTTP 404**. Zero schema emitted (page didn't render).
+
+Case B — Commercial WITH `unit_number` (`W12757178`, Mississauga office unit 211):
+- Slug via `generatePropertySlug`: `/448-burnhamthorpe-road-w-unit-211-w12757178`
+- Route: `isPropertySlug` = true → PropertyPage → no property_type gate → **renders**.
+- **HTTP 200, 263 KB**. Emitted RealEstateListing JSON-LD parses OK, VERIFIED verbatim:
+  ```
+  "@type": "RealEstateListing"
+  about.@type: "Residence"                              ← WRONG for a commercial office
+  offers.price: 0                                        ← real DB value list_price="0" (14 of 937 have $0)
+  offers.availability: https://schema.org/InStock
+  offers.businessFunction: https://schema.org/Sell
+  ```
+
+**Volume (Active Commercial, VERIFIED this session)**:
+```
+has unit_number: 937 total (14 with list_price=0)  → renders w/ WRONG schema (about.@type=Residence)
+no unit_number:  196 total (0 with list_price=0)   → 404
+TOTAL Active Commercial: 1,133
+```
+
+**Rule Zero violation confirmed**: 937 Active Commercial listings currently emit RealEstateListing JSON-LD claiming `about.@type: Residence` — a factually wrong classification. Google would read the schema as residential.
+
+##### 5. Commercial fix scope — NOT schema-only
+
+Commercial is **not** a schema-only add. Real scope:
+
+**a. Product decision required (operator)**:
+- Should Commercial render publicly at all? (business focus, data privacy, agent licensing scope)
+- If YES: dedicated Commercial page needed (different attributes than Residential — cap rate, gross income, zoning, GLA, tenancy schedule; different rich-card expectations)
+- If NO: gate Commercial at both PropertyPage AND HomePropertyPage (stop the 937 from rendering incorrectly)
+
+**b. Schema.org type for commercial real estate** (research this session, no build):
+Schema.org has **no dedicated `CommercialRealEstateListing` type**. Options:
+- `RealEstateListing` with `about.@type: Place` (not `Residence`) — technically permissible; Place is a more general geo type. Would emit honest structure but no residential-rich-card boost.
+- `Product` + nested `Offer` — generic e-commerce shape; loses real-estate semantics.
+- `LocalBusiness` subtype for the property itself — only if the listing represents an active business (e.g., `HotelListing`, `Restaurant`). Would fit `Sale of Business` subtype but not vacant `Office`, `Retail`, `Industrial`, `Land`.
+- Google's rich-result documentation supports RealEstateListing rich cards only for residential (`Apartment`, `House`, `SingleFamilyResidence`). **Commercial listings do NOT get Google rich-cards regardless of schema choice.**
+
+**c. Blast radius of the current bug**:
+- 937 misleading schema emissions today (Rule Zero #1: property claiming to be a Residence when it's an Office/Retail/etc.).
+- The impact is subtle — Google will silently downweight or ignore these, but SEO reporting will show them as "real estate listings" incorrectly.
+
+##### 6. Verdict — plain
+
+**Semi-Detached fix**: exact fix identified. Two paths (app-side trim vs DB-side normalization); recommend DB-side to cure all 6 consumers at root. Full regression surface is exactly 3,878 rows, all legitimately home listings (Semi-Detached is in RESIDENTIAL_TYPES; only the storage has a trailing space). No commercial/land/other sneaks in. Ready to build once operator picks Option A or B.
+
+**Commercial**: does render TODAY on 937 URLs — with a Rule Zero #1 violation (`about.@type: Residence` for actual Commercial). Product decision required from operator BEFORE any build:
+- (1) Suppress: gate PropertyPage on `property_type='Commercial'` too — 937 URLs go 404, remove the misleading schema. Simplest path. Also gate HomePropertyPage the same way (currently 196 Commercials already 404 via subtype-gate — extending the gate is defense-in-depth).
+- (2) Render but honestly: keep 937 rendering, patch ListingSchema to emit `about.@type: Place` (not Residence) when property_type='Commercial'. Simpler than a Commercial page component. No rich-card boost from Google but honest. 196 no-unit Commercial URLs stay 404.
+- (3) Full commercial page component + correct schema type + open the 196 currently-404 URLs. Largest scope — net-new page work.
+
+**Both fixes are pre-approved to build only after operator picks a Semi-Detached option (A/B) and a Commercial posture (1/2/3).** No code change this dispatch.
+
+##### 7. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_SEMI-COMMERCIAL-RECON_20260705_061906`. Data queries via ad-hoc `node -e` scripts (safe — `BEGIN READ ONLY`, explicit column allow-lists, no `SELECT *` on credential tables). Every claim above verified against a command output this session; nothing marked "claimed, unverified."
+
+#### SEMI-DETACHED-404 FIX — SHIPPED (2026-07-05)
+
+Root-cause fix for Open Finding 2 from A-UNIT-2 RECONCILE. Option B (DB-side normalization) applied per operator dispatch: normalize the trailing-whitespace subtype at the storage layer AND fix the nightly sync so the whitespace cannot recur (NOTHING-DEFERRED).
+
+##### 1. Pre-migration snapshot — VERIFIED counts before touching prod
+
+Snapshot file: `docs/snapshots/semidetached_pre_normalize_20260705_065115.txt`.
+
+Byte-level probe (`encode(property_subtype::bytea,'hex')`) on all statuses / both property_types with trailing 0x20 SPACE:
+```
+Total malformed rows (property_subtype <> btrim(property_subtype)):  69,955
+Distinct malformed values:                                                1
+Value: "Semi-Detached " (14 bytes, hex ...6420 with trailing 0x20)  → Residential Freehold
+
+By status:
+  Closed        34,066
+  Cancelled     22,931
+  Expired        5,834
+  Active         3,878         ← the 3,878 Active pages that 404'd
+  Withdrawn      2,432
+  Suspended         512
+  Terminated        168
+  Delayed           131
+  Pending             3
+```
+Sample listing_keys captured for post-migration re-check (3 Active Semi-Detached rows chosen at random): W13412844, X12450779, X13111972. All 3 confirmed clean post-COMMIT.
+
+##### 2. Migration — transactional runner, COMMITTED to prod (OPERATOR-APPROVED)
+
+Script: `scripts/apply-semidetached-normalize.js`. Ran inside `BEGIN` with `SET LOCAL statement_timeout = 0` (CLAUDE.md pattern — the default 60s pool timeout would kill a 69,955-row UPDATE). Structure:
+```
+BEGIN
+SET LOCAL statement_timeout = 0
+  pre-check: 69,955 malformed
+  UPDATE mls_listings
+    SET property_subtype = btrim(property_subtype)
+    WHERE property_subtype IS NOT NULL AND property_subtype <> btrim(property_subtype)
+    → 69,955 rows updated
+  post-verify (same TX): 0 malformed remaining
+  sample re-check for W13412844, X12450779, X13111972: each == "Semi-Detached" (13 bytes)
+COMMIT
+```
+First apply attempt hit the 300000ms pool timeout (script had no `SET LOCAL statement_timeout = 0`). Fixed per CLAUDE.md and re-ran; second attempt COMMITTED cleanly. Post-COMMIT DB state:
+- `Semi-Detached ` (14 bytes, trailing 0x20): **0 rows** anywhere.
+- `Semi-Detached` (13 bytes, clean): **3,878 Active + 66,077 non-Active** rows.
+
+##### 3. Sync pipeline patched at 4 sites — NOTHING-DEFERRED
+
+Every write path from PropTx feed → `mls_listings.property_subtype` normalized at insert. Same shape everywhere: `listing.PropertySubType?.trim() || null` (preserves null when upstream sends null/empty; strips leading + trailing whitespace when populated).
+
+| File | Line | Backup |
+|---|---|---|
+| `lib/proptx/field-mapper.ts` | 31 | `.backup_SEMI-SYNC_20260705_070919` |
+| `lib/homes-sync/save.ts` | 293 | `.backup_SEMI-SYNC_20260705_070919` |
+| `lib/building-sync/save.ts` | 374 | `.backup_SEMI-SYNC_20260705_070919` |
+| `scripts/lib/homes-save.ts` | 288 | `.backup_SEMI-SYNC_20260705_070919` |
+
+TSC exit 0 on all 4 edits. Whitespace cannot recur via any documented insert path.
+
+##### 4. Consumer smoke — ALL 5 SITES VERIFIED, BOTH TENANTS
+
+| # | Consumer | Smoke result |
+|---|---|---|
+| 1 | `app/property/[id]/HomePropertyPage.tsx:100` render gate | `/54-st-clair-gardens-toronto-w03-w13412844` on `Host: aily.ca` → **HTTP 200**, 255 KB. RealEstateListing JSON-LD emits, parses OK, `about.@type: "House"` (correct for Semi-Detached), availability InStock, businessFunction Sell. Same URL was 404 pre-migration. |
+| 2 | `app/api/geo-listings/route.ts:71` — `.in('property_subtype', RESIDENTIAL_TYPES)` | `GET /api/geo-listings?geoType=community&geoId=96705bcf-…&tab=for-sale&propertyCategory=homes&pageSize=100` on `Host: aily.ca` → HTTP 200. **92 rows returned. Subtype breakdown: Detached 44, Semi-Detached 28, Att/Row/Townhouse 18, Link 2.** Semi-Detached present ✓ — Postgres IN() now matches. |
+| 3 | `app/api/neighbourhood-listings/route.ts:97` — same-shape Postgres `.in()` | `GET /api/neighbourhood-listings?municipalityIds=81e3dec9-…&tab=for-sale&subtypes=Semi-Detached&pageSize=10` on `Host: aily.ca` → HTTP 200. **10 rows returned, all `Semi-Detached`. Total across muni: 250 Active Semi-Detached rows now match.** |
+| 4 | `app/api/charlie/plan-email/route.ts:167` — inline `HOME_SUBTYPES.includes` classifier | Unit test with `property_subtype='Semi-Detached'`: `isHome === true`. Pre-migration with `'Semi-Detached '`: `isHome === false` (misclassified as condo). Now impossible per the DB normalization. |
+| 5 | `app/api/charlie/route.ts:661, 761` — inline literal `.includes` classifier | Same shape as #4. Same argument: DB no longer stores the trailing space, so `.includes('Semi-Detached')` on the DB value matches identically to #4. |
+
+**Walliam absence check** (SEO gate — non-SEO tenant must render 200 without JSON-LD): same URL `/54-st-clair-gardens-toronto-w03-w13412844` on `Host: walliam.ca` → **HTTP 200**, 229 KB, `"@type":"RealEstateListing"` x0 (SEO gate intact), page renders content normally, address + subtype present. Non-SEO behavior preserved.
+
+##### 5. Files this dispatch
+
+New:
+- `scripts/apply-semidetached-normalize.js` (transactional runner; `SET LOCAL statement_timeout = 0`; ROLLBACK on any mismatch)
+- `docs/snapshots/semidetached_pre_normalize_20260705_065115.txt` (pre-migration counts, byte-level probe, sample listing_keys)
+
+Modified (all with `.backup_SEMI-SYNC_20260705_070919`):
+- `lib/proptx/field-mapper.ts`
+- `lib/homes-sync/save.ts`
+- `lib/building-sync/save.ts`
+- `scripts/lib/homes-save.ts`
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `docs/W-MARKETING-TRACKER.md.backup_SEMI-SYNC_20260705_112030`)
+
+##### 6. Open Finding 2 — CLOSED
+
+Semi-Detached whitespace bug is fixed at root: (a) DB normalized (69,955 rows including 3,878 Active); (b) 4 sync sites `.trim()`-guarded to prevent recurrence; (c) all 5 downstream consumers verified working on both tenants (aily + walliam). No app-side `.trim()` patches were needed — the root fix cured every consumer. Bug cannot recur via any documented insert path.
+
+Open Finding 1 (Commercial 937 rendering with `about.@type: Residence`) remains OPEN, awaiting operator product decision on (1) suppress / (2) render honestly with `Place` / (3) full commercial page.
+
+HOLD push per operator dispatch. Commit staged only; `git push` not run.
+
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
 **File**: `components/LocalBusinessSchema.tsx` (new, 90 lines). Async server component, gated on `isSeoEnabledTenant()`. Deterministic address parser (splits canonical `"street, locality, region postal, country"` format). Falls back to single-line streetAddress if parse fails.

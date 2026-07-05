@@ -290,7 +290,9 @@ function mapCompleteDLAFields(listing: any, areaId: string, municipalityId: stri
 
     // ===== PROPERTY TYPE =====
     property_type: listing.PropertyType || null,
-    property_subtype: listing.PropertySubType || null,
+    // SEMI-DETACHED-404 FIX (2026-07-05): PropTx feed emits some subtype
+    // values with trailing whitespace (e.g. "Semi-Detached "). Trim-on-write.
+    property_subtype: listing.PropertySubType?.trim() || null,
     property_use: listing.PropertyUse || null,
     board_property_type: listing.BoardPropertyType || null,
     transaction_type: listing.TransactionType || null,

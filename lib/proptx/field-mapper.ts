@@ -28,7 +28,13 @@
       
       // ===== PROPERTY TYPE =====
       property_type: proptxListing.PropertyType,
-      property_subtype: proptxListing.PropertySubType,
+      // SEMI-DETACHED-404 FIX (2026-07-05): PropTx feed emits some subtype
+      // values with trailing whitespace (verified: "Semi-Detached " with
+      // trailing 0x20 across 69,955 rows pre-normalize). The exact-match
+      // gate in HomePropertyPage.tsx:100 + Postgres `.in()` predicates
+      // in geo/neighbourhood-listings never matched those rows.
+      // Trim-on-write here (field-mapper choke point).
+      property_subtype: proptxListing.PropertySubType?.trim() || null,
       property_use: proptxListing.PropertyUse,
       board_property_type: proptxListing.BoardPropertyType,
       transaction_type: proptxListing.TransactionType,
