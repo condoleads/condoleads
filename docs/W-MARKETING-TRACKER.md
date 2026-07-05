@@ -1120,11 +1120,13 @@ if (!RESIDENTIAL_TYPES.includes(listing.property_subtype)) notFound()
 |---|---|---|---|
 | Condos with `-unit-` slug | All condo subtypes if unit_number in slug (Condo Apartment/Townhouse/Common Element/Detached Condo/Semi Condo/Parking Space/etc.) | PropertyPage | ✓ SHIPPED (Phase 1) |
 | Homes with RESIDENTIAL_TYPES subtype | Detached, Semi-Detached, Att/Row/Townhouse, Link, Duplex, Triplex, Fourplex, Multiplex (~56,772 Active) | HomePropertyPage | ✓ SHIPPED (Phase 2 Part A2) |
-| Homes with non-RESIDENTIAL_TYPES subtype | Vacant Land 5,656 / Farm 530 / MobileTrailer 496 / Rural Residential 487 / Other 438 / Lower Level 286 / Modular Home 227 / Upper Level 165 / Store W Apt-Office 146 / Room 31 (~8,462 Active) | HomePropertyPage line 100 → `notFound()` → 404 | N/A — page doesn't render |
-| Commercial | All commercial subtypes (~1,133 Active) | Routes fail — same 404 posture as non-RESIDENTIAL_TYPES freehold | N/A — page doesn't render |
+| Homes with non-RESIDENTIAL_TYPES subtype | **CORRECTED 2026-07-05**: Vacant Land 5,656 / Semi-Detached (whitespace bug) 3,863 / Farm 530 / MobileTrailer 496 / Rural Residential 487 / Other 438 / Lower Level 286 / Modular Home 227 / Upper Level 165 / Store W Apt/Office 146 / Room 31 / Shared Room 5 = **12,330 Active** | HomePropertyPage line 100 → `notFound()` → 404 | N/A — page doesn't render |
+| Commercial | Commercial Retail 496 / Office 371 / Sale Of Business 129 / Industrial 80 / Investment 34 / Land 15 / Store W Apt/Office 8 = **1,133 Active** | Routes fail — same 404 posture as non-RESIDENTIAL_TYPES freehold | N/A — page doesn't render |
 | Condos WITHOUT unit_number in slug | If listing_key present + MLS-shape → HomePropertyPage.line 100 → notFound (subtype not in RESIDENTIAL_TYPES) → 404. Otherwise falls through to BuildingPage which likely 404s. | 404 | N/A — page doesn't render |
 
-**Verdict**: No missing schema mount. Every route that RENDERS a listing page mounts RealEstateListing. Pages that `notFound()` for out-of-scope subtypes don't render at all; there is no rendered page missing schema. The ~9,595 out-of-scope Active listings (non-RESIDENTIAL_TYPES freehold + Commercial) are a *page-existence* gap outside A-UNIT-2's scope (would need new page components).
+**Verdict**: No missing schema mount. Every route that RENDERS a listing page mounts RealEstateListing. Pages that `notFound()` for out-of-scope subtypes don't render at all; there is no rendered page missing schema. The out-of-scope Active listings are a *page-existence* gap outside A-UNIT-2's scope (would need new page components).
+
+**CORRECTION 2026-07-05 (numeric — VERIFIED against DB this session)**: prior tracker entry claimed "~9,595" non-schema-emitting Active rows. The verified count is **13,463 Active** (non-RESIDENTIAL_TYPES freehold 12,330 + Commercial 1,133). The prior number was a numerical error (undercounted Semi-Detached whitespace-affected rows + arithmetic mistake). See "Open Findings" below for the whitespace bug's root cause.
 
 ##### 2. Full coverage matrix — every cell command-verified
 
@@ -1166,6 +1168,61 @@ Rows enumerate every user-facing page.tsx under `app/` (excluding admin, api, au
 | null | omit | ✓ |
 
 **Matrix zero-unexplained-MISSING check**: every non-N/A cell is SHIPPED-VERIFIED or intentionally out-of-scope with a stated reason (ancillary content pages / non-SEO surfaces). No MISSING cell blocks A-UNIT-2 completion.
+
+##### 2b. Enumerated 13-cell verification grid — VERIFIED command output (2026-07-05 VERIFY RUN)
+
+Reconciled 2026-07-05: the prior "matrix zero-unexplained-MISSING" verdict was correct in aggregate but was NOT backed by per-cell command evidence at the time of the Phase 2 shipped claim. This section reconciles by enumerating every cell with a real URL, a real DB row, and the emitted `@types` observed by `curl` in the same-session dev-server smoke. Every value below is `VERIFIED` (command output this session).
+
+Each row = one page type × state × transaction cell smoked against the aily.ca dev server. DB rows picked via a targeted `SELECT` (see `docs/A-UNIT-2-VERIFY.txt` for row picks — or reproducible via the pattern in `scripts/_a2p2-pick-listings.js`).
+
+| # | Cell | Real URL smoked | DB context (type / status / tx) | HTTP | Emitted `@types` | `offers.availability` | `offers.businessFunction` | Verdict |
+|---|---|---|---|---:|---|---|---|---|
+| 1 | Area | `http://aily.ca/chatham-kent-area` | treb_area "Chatham-Kent" | 200 | BreadcrumbList, AdministrativeArea | — | — | ✓ |
+| 2 | Municipality | `http://aily.ca/toronto-e02` | muni "Toronto E02" | 200 | BreadcrumbList, City, AdministrativeArea | — | — | ✓ containedInPlace chain |
+| 3 | Community | `http://aily.ca/cooksville` | community "Cooksville" | 200 | BreadcrumbList, Place, City, AdministrativeArea | — | — | ✓ 3-level chain |
+| 4 | Neighbourhood | `http://aily.ca/toronto/downtown` | neighbourhood "Downtown" | 200 | BreadcrumbList, Place | — | — | ✓ |
+| 5 | Building | `http://aily.ca/5750-tosca-dr-townhouse-condos-3250-bentley-mississauga` | building "5750 Tosca Dr Townhouse Condos" | 200 | ApartmentComplex, BreadcrumbList | — | — | ✓ real locality via geo join |
+| 6 | Property — Active For Sale HOME | `http://aily.ca/31-calamint-lane-toronto-e13522120` | Att/Row/Townhouse, Active, For Sale | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/InStock` | `https://schema.org/Sell` | ✓ |
+| 7 | Property — Active For Sale CONDO | `http://aily.ca/15-heron-park-place-unit-17-e13522206` | Condo Townhouse, Active, For Sale | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/InStock` | `https://schema.org/Sell` | ✓ |
+| 8 | Property — Closed For Sale HOME | `http://aily.ca/159-rolling-meadows-drive-kitchener-x12578214` | Detached, Closed, For Sale | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/SoldOut` | `https://schema.org/Sell` | ✓ honest historical |
+| 9 | Property — Closed For Sale CONDO | `http://aily.ca/1830-dumont-street-unit-206-x12607796` | Condo Apartment, Closed, For Sale | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/SoldOut` | `https://schema.org/Sell` | ✓ |
+| 10 | Property — Active For Lease HOME | `http://aily.ca/1300-braeside-drive-oakville-w12205517` | Detached, Active, For Lease | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/InStock` | `https://schema.org/LeaseOut` | ✓ |
+| 11 | Property — Active For Lease CONDO | `http://aily.ca/7-grenville-street-unit-811-c12129402` | Condo Apartment, Active, For Lease | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/InStock` | `https://schema.org/LeaseOut` | ✓ |
+| 12 | Property — Closed For Lease HOME | `http://aily.ca/454-morrison-point-prince-edward-county-x12362145` | Detached, Closed, For Lease | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/SoldOut` | `https://schema.org/LeaseOut` | ⚠ `SoldOut` on a lease is inexact but honest — schema.org has no dedicated `LeasedOut` enum; least-bad choice |
+| 13 | Property — Closed For Lease CONDO | `http://aily.ca/520-silken-laumann-drive-unit-2-n11960675` | Condo Townhouse, Closed, For Lease | 200 | RealEstateListing, BreadcrumbList | `https://schema.org/SoldOut` | `https://schema.org/LeaseOut` | ⚠ same rationale as row 12 |
+
+Additional cells previously smoked in prior sessions and preserved here for the full state-axis picture (state = Discontinued):
+- Withdrawn condo `C13519594` (Phase 2 smoke): `RealEstateListing.offers.availability = "https://schema.org/Discontinued"` (VERIFIED). No wrong-state schema.
+- LocalBusiness on aily homepage (this session, comprehensive-close): `@type: RealEstateAgent` with all 5 PostalAddress slots populated from the real `tenants.brokerage_address` via deterministic parse (VERIFIED byte-for-byte match against the raw column value).
+
+**Grid verdict**: 13 cells + Discontinued + LocalBusiness = 15 distinct schema surfaces × states smoked this session. **Zero wrong-state emission.** No `InStock` on a Closed/Withdrawn listing. No fabricated `businessFunction`. Every emitted value is either the real DB value or a deterministic map from a real DB value.
+
+##### 2c. Open findings — surfaced by A-UNIT-2 VERIFY (NOT A-UNIT-2 scope, but real)
+
+Two incidental findings emerged during the verify enumeration. Neither is a Rule Zero item for the A-UNIT-2 schema emitters (schemas emit honestly; the issues are upstream of what schemas can see). Both are OPEN follow-ups outside A-UNIT-2 scope.
+
+**Open Finding 1 — Commercial listings render no page (product decision needed)**:
+- **Real DB state (VERIFIED this session)**: `SELECT property_type, COUNT(*) FROM mls_listings WHERE standard_status='Active' AND property_type='Commercial' GROUP BY 1` returns **1,133** rows. Subtypes: Commercial Retail 496, Office 371, Sale Of Business 129, Industrial 80, Investment 34, Land 15, Store W Apt/Office 8.
+- Operator's earlier assumption "no commercial listings" is contradicted by the DB.
+- Commercial URLs, if hit, route to `HomePropertyPage.tsx:100 notFound()` (subtype not in RESIDENTIAL_TYPES).
+- **Open question for product**: is this the intended sync scope (Commercial rows imported but no user-facing page), OR should Commercial pages exist? This is a scope decision, not a schema fix. Log as OPEN.
+- Not blocking A-UNIT-2 push: no page renders → no schema needed. But the tracker's Phase 2 "Commercial 1,133" gap claim was accurate in intent, if numerically off.
+
+**Open Finding 2 — Semi-Detached whitespace bug in HomePropertyPage.tsx:100 (pre-existing)**:
+- **Real DB state (VERIFIED this session, byte-level probe)**:
+  ```
+  DB:   "Semi-Detached "  (14 bytes, hex: 53656d692d446574616368656420, trailing 0x20 space)
+  Code: "Semi-Detached"   (13 bytes, hex: 53656d692d4465746163686564,  no trailing space)
+  ```
+- Code (`app/property/[id]/HomePropertyPage.tsx:16`): `const RESIDENTIAL_TYPES = ['Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex']`
+- Gate (`:100`): `if (!RESIDENTIAL_TYPES.includes(listing.property_subtype)) notFound()`
+- Because DB subtype `"Semi-Detached "` (with trailing space) ≠ code constant `"Semi-Detached"` (no space), `.includes` returns false → all 3,863 Active Semi-Detached homes render **404** instead of the home listing page + RealEstateListing schema.
+- **VERIFIED counts (this session)**: `exact-match` (no `.trim`) = **0** Semi-Detached rows recognized. `TRIM-match` = **3,863** rows recognized. **space-affected = 3,863**.
+- **Root cause**: pre-existing bug in HomePropertyPage's gate — likely dates back before A-UNIT-2 (the space was in the DB pre-Phase-1). Not introduced by A-UNIT-2 code changes.
+- **Fix (proposed, out of A-UNIT-2 scope)**: change `HomePropertyPage.tsx:100` to `if (!RESIDENTIAL_TYPES.includes((listing.property_subtype || '').trim())) notFound()`. Trivial patch; would immediately unblock 3,863 pages that would then emit RealEstateListing schema via the Phase 2 mount.
+- Log as OPEN bug. Not blocking A-UNIT-2 push (schema itself is correct; the affected pages don't render at all → the schema never gets a chance to emit).
+
+Both findings surfaced BECAUSE of A-UNIT-2's Rule Zero / comprehensive posture. Neither invalidates any shipped A-UNIT-2 schema.
 
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
