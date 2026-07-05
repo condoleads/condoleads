@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { getAgentFromHost } from '@/lib/utils/agent-detection'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
 import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
+import LocalBusinessSchema from '@/components/LocalBusinessSchema'
 import { extractSubdomain } from '@/lib/utils/agent-detection'
 // C7/D11 -- comprehensive-site metadata is now per-tenant.
 export async function generateMetadata(): Promise<Metadata> {
@@ -82,7 +83,7 @@ export default async function ComprehensiveHomePage() {
   if (tenant) {
     const { data: tenantDetail, error: tenantErr } = await supabase
       .from('tenants')
-      .select('default_agent_id, homepage_layout')
+      .select('default_agent_id, homepage_layout, brand_name, name, domain, brokerage_name, brokerage_address, brokerage_phone, logo_url')
       .eq('id', tenant.id)
       .eq('is_active', true)
       .single()
@@ -98,16 +99,30 @@ export default async function ComprehensiveHomePage() {
       if (agent) {
         const agentProps = {...agent, is_active: true}
         const layout = tenantDetail?.homepage_layout ?? 'v1'
+        // A-UNIT-2 COMPREHENSIVE-CLOSE (2026-07-05): LocalBusiness /
+        // RealEstateAgent JSON-LD. Every field sourced from the
+        // tenants row via the .select allow-list above. Component
+        // gated on isSeoEnabledTenant() internally.
+        const bizSchema = (
+          <LocalBusinessSchema
+            url={`https://${tenantDetail.domain}/`}
+            name={tenantDetail.brand_name || tenantDetail.name || null}
+            telephone={tenantDetail.brokerage_phone || null}
+            parentOrganizationName={tenantDetail.brokerage_name || null}
+            brokerageAddress={tenantDetail.brokerage_address || null}
+            logoUrl={tenantDetail.logo_url || null}
+          />
+        )
         // W-AILY-V3-BROWSE-FIRST (2026-06-21): 'v3' renders V2 with
         // defaultHomeMode='browse' (lands on listings first paint;
         // existing AI/Browse toggle still works). v2 path unchanged
         // (defaultHomeMode prop omitted → client falls to 'ai').
         // W-AILY-V3-PLAN-CTAS (2026-06-21): also surface prominent
         // "Get AI Buyer/Seller Plan" CTAs above the browse search bar.
-        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs />
+        if (layout === 'v3') return <>{bizSchema}<HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs /></>
         return layout === 'v2'
-          ? <HomePageComprehensiveV2 agent={agentProps} />
-          : <HomePageComprehensive agent={agentProps} />
+          ? <>{bizSchema}<HomePageComprehensiveV2 agent={agentProps} /></>
+          : <>{bizSchema}<HomePageComprehensive agent={agentProps} /></>
       }
     }
     console.error('[comprehensive-site] tenant by host resolved but default_agent_id lookup failed:', { host, tenantId: tenant.id })

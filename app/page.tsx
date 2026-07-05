@@ -19,6 +19,7 @@ import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import { HomePageComprehensive } from '@/components/HomePageComprehensive'
 import { HomePageComprehensiveV2 } from '@/components/HomePageComprehensiveV2'
 import ZeroOneLeadsPage from './zerooneleads/page'
+import LocalBusinessSchema from '@/components/LocalBusinessSchema'
 
 // Force dynamic rendering - no caching
 export const dynamic = 'force-dynamic';
@@ -53,7 +54,7 @@ export default async function RootPage() {
   if (resolvedTenant?.id) {
     const { data: tenantConfig } = await _db
       .from('tenants')
-      .select('default_agent_id, homepage_layout')
+      .select('default_agent_id, homepage_layout, brand_name, name, domain, brokerage_name, brokerage_address, brokerage_phone, logo_url')
       .eq('id', resolvedTenant.id)
       .single()
     if (tenantConfig?.default_agent_id) {
@@ -65,16 +66,32 @@ export default async function RootPage() {
       if (defaultAgent) {
         const agentProps = { ...defaultAgent, is_active: true }
         const layout = tenantConfig.homepage_layout ?? 'v1'
+        // A-UNIT-2 COMPREHENSIVE-CLOSE (2026-07-05): LocalBusiness /
+        // RealEstateAgent JSON-LD on the tenant homepage. Every field
+        // sourced from real tenants columns already fetched above (see
+        // .select allow-list). Gated on isSeoEnabledTenant() inside
+        // the component. Wrapped as a fragment so the same schema
+        // fires for all three layouts (v1/v2/v3).
+        const bizSchema = (
+          <LocalBusinessSchema
+            url={`https://${tenantConfig.domain}/`}
+            name={tenantConfig.brand_name || tenantConfig.name || null}
+            telephone={tenantConfig.brokerage_phone || null}
+            parentOrganizationName={tenantConfig.brokerage_name || null}
+            brokerageAddress={tenantConfig.brokerage_address || null}
+            logoUrl={tenantConfig.logo_url || null}
+          />
+        )
         // W-AILY-V3-BROWSE-FIRST (2026-06-21): 'v3' renders V2 with
         // defaultHomeMode='browse'. Same shape as the comprehensive-
         // site router; v2 path unchanged (prop omitted → client
         // useState init falls to 'ai').
         // W-AILY-V3-PLAN-CTAS (2026-06-21): also surface prominent
         // "Get AI Buyer/Seller Plan" CTAs above the browse search bar.
-        if (layout === 'v3') return <HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs />
+        if (layout === 'v3') return <>{bizSchema}<HomePageComprehensiveV2 agent={agentProps} defaultHomeMode='browse' showBrowsePlanCTAs /></>
         return layout === 'v2'
-          ? <HomePageComprehensiveV2 agent={agentProps} />
-          : <HomePageComprehensive agent={agentProps} />
+          ? <>{bizSchema}<HomePageComprehensiveV2 agent={agentProps} /></>
+          : <>{bizSchema}<HomePageComprehensive agent={agentProps} /></>
       }
     }
   }

@@ -8,6 +8,8 @@ import Link from 'next/link'
 import DevelopmentListings from './components/DevelopmentListings'
 import DevelopmentSEO from './components/DevelopmentSEO'
 import Breadcrumb from '@/components/Breadcrumb'
+import BreadcrumbSchema from '@/components/BreadcrumbSchema'
+import { resolveCanonicalHost } from '@/lib/utils/canonical'
 import MobileContactBar from '@/components/MobileContactBar'
 import DevelopmentStickyNav from './components/DevelopmentStickyNav'
 import { unstable_cache } from 'next/cache'
@@ -191,8 +193,19 @@ export default async function DevelopmentPage({ params, development }: Developme
     return photos[0]?.media_url || '/placeholder-unit.jpg'
   }
 
+  // A-UNIT-2 COMPREHENSIVE-CLOSE (2026-07-05): BreadcrumbList JSON-LD.
+  // Development is a top-of-hierarchy landing (multiple buildings under it);
+  // its own parent geo chain isn't in scope on this page. Simple chain
+  // Home > Development matches the existing visual breadcrumb at line 225.
+  const _domain = await resolveCanonicalHost()
+  const _devUrl = `https://${_domain}/${development.slug}`
+
   return (
     <>
+      <BreadcrumbSchema
+        items={[{ name: development.name, url: _devUrl }]}
+        homeUrl={`https://${_domain}/`}
+      />
       {agent && (
         <script
           dangerouslySetInnerHTML={{
