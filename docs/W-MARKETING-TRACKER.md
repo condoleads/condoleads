@@ -2078,6 +2078,88 @@ Both filter arrays in `GeoAdvancedFilters.tsx` are **hardcoded literals** tied b
 
 Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_BMZDISK_20260706_102513`. No code, no SQL, no schema change. Ride-along with the `67bb717` push per operator dispatch.
 
+#### CONDO-TYPES-FIX — API predicate closed + shared-module refactor SHIPPED (2026-07-06)
+
+Closes the "API CONDO_TYPES gap" flagged in the BMZDISK reference block: `Semi-Detached Condo` was in the user chip list (67bb717) but missing from the server `.in()` predicate at [geo-listings/route.ts:6](app/api/geo-listings/route.ts#L6) and [neighbourhood-listings/route.ts:10-13](app/api/neighbourhood-listings/route.ts#L10). Chip-select returned zero — a broken filter shipped in 67bb717 as a half-fix.
+
+##### 1. Step 0 — DB truth (READ ONLY)
+
+`SELECT DISTINCT property_subtype, COUNT(*) FROM mls_listings WHERE property_type='Residential Condo & Other' AND standard_status='Active' GROUP BY 1 ORDER BY 2 DESC` — this session. Real distinct condo subtypes (19 total; dwelling-shaped 8):
+```
+Condo Apartment 21249  Condo Townhouse 5839  Common Element Condo 603
+Other 261  Co-op Apartment 161  Detached Condo 140  Parking Space 133
+Vacant Land Condo 124  Semi-Detached Condo 52  Leasehold Condo 47
+Co-Ownership Apartment 45  Locker 17  Upper Level 17  Timeshare 9
+Room 7  Att/Row/Townhouse 2  Shared Room 1  Lower Level 1  Phased Condo 1
+```
+
+Byte-compare (this session) — chip list vs API predicates:
+| Source | Entries | Contains Semi-Detached Condo? |
+|---|---:|---|
+| `GeoAdvancedFilters.tsx` `CONDO_SUBTYPES` (post-67bb717) | 8 | ✅ Yes |
+| `app/api/geo-listings/route.ts:6` `CONDO_TYPES` | 7 | ❌ **MISSING** |
+| `app/api/neighbourhood-listings/route.ts:10-13` `CONDO_TYPES` | 7 | ❌ **MISSING** |
+
+Only `Semi-Detached Condo` is missing from the API predicates — no other gaps.
+
+##### 2. Step 2 — COMPREHENSIVE decision: Option-A shared-module refactor DONE
+
+**This is the 2nd chip/predicate drift incident** (freehold gap closed in 67bb717; condo gap closed here). Rule Zero "architecture prevents new instances of the same class of bug" triggers. Extending literals a 3rd time is not defensible — the drift class has recurred.
+
+**Refactor SHIPPED**: single source of truth at [lib/constants/property-subtypes.ts](lib/constants/property-subtypes.ts) (new module, 60 lines). Exports:
+- `RESIDENTIAL_TYPES` — 19 freehold dwelling + non-dwelling subtypes.
+- `CONDO_TYPES` — 8 condo dwelling subtypes (non-dwelling condo tails Parking Space, Locker, Vacant Land Condo, Timeshare, Phased Condo intentionally excluded).
+
+Every consumer replaced its local literal with an `import { … } from '@/lib/constants/property-subtypes'`:
+| File | Before | After |
+|---|---|---|
+| [app/property/[id]/HomePropertyPage.tsx:15](app/property/[id]/HomePropertyPage.tsx#L15) | local `const RESIDENTIAL_TYPES = [...]` (19) | `import { RESIDENTIAL_TYPES }` |
+| [app/api/geo-listings/route.ts:3](app/api/geo-listings/route.ts#L3) | local `CONDO_TYPES` (7) + `RESIDENTIAL_TYPES` (19) | `import { CONDO_TYPES, RESIDENTIAL_TYPES }` |
+| [app/api/neighbourhood-listings/route.ts:7](app/api/neighbourhood-listings/route.ts#L7) | same | same |
+| [app/sitemap.xml/route.ts:33](app/sitemap.xml/route.ts#L33) | local `HOME_SUBTYPES` (19) | `import { RESIDENTIAL_TYPES }` (renamed reference at `:81`) |
+| [app/[slug]/components/GeoAdvancedFilters.tsx:4](app/[slug]/components/GeoAdvancedFilters.tsx#L4) | local `HOME_SUBTYPES` (19) + `CONDO_SUBTYPES` (8) | `import { RESIDENTIAL_TYPES, CONDO_TYPES }` + local aliases `HOME_SUBTYPES = RESIDENTIAL_TYPES`, `CONDO_SUBTYPES = CONDO_TYPES` (preserve prior render-time variable names for minimal diff) |
+
+TSC exit 0 on all 5 edits + the new module.
+
+**One sync surface intentionally NOT in the module**: the SQL RPC `public.get_sitemap_listings` (`supabase/migrations/20260705_a_unit_2_final_sitemap_rpc_widen.sql`) — Postgres cannot import a JS array. The shared module's header comment names this explicitly with instructions: if you edit `RESIDENTIAL_TYPES` you MUST also cut a new migration re-creating the RPC.
+
+##### 3. Step 3 — Smoke matrix
+
+| # | Path | Command | Pre-fix | Post-fix |
+|---|---|---|---:|---:|
+| 1 | `geo-listings` `subtypes=Semi-Detached Condo` on top community (DB n=7) | HTTP GET | **0** | **7, all Semi-Detached Condo** |
+| 2 | Regression: `subtypes=Condo Apartment` same community (DB n=6) | HTTP GET | 6 | 6, all Condo Apartment (no regression) |
+| 3 | Unfiltered `propertyCategory=condo` same community | HTTP GET | 24 (missing 7 SDC) | 31 rows — includes 7 Semi-Detached Condo (`.in(CONDO_TYPES)` now matches all 8) |
+| 4 | `neighbourhood-listings` `subtypes=Semi-Detached Condo` muni (DB n=9) | HTTP GET | 0 | 9, all Semi-Detached Condo |
+| 5 | Freehold widening intact: `subtypes=Farm` on Farm-community | HTTP GET | 11 | 11 (unchanged) |
+| 6 | walliam.ca `subtypes=Semi-Detached Condo` same community | HTTP GET | 0 | 7 (identical to aily — data-plane, correct) |
+
+VERIFIED at runtime this session: `require('lib/constants/property-subtypes.ts')` returns `CONDO_TYPES.length === 8` and `RESIDENTIAL_TYPES.length === 19` — matches the 3 previously-drifting consumers byte-for-byte.
+
+##### 4. Verdicts
+
+- **API `CONDO_TYPES` gap** — **CLOSED**. Semi-Detached Condo now returns real rows through both API predicates and both tenants.
+- **Option-A shared-module refactor** — **SHIPPED**. Prior tracker entries logged this as OPEN follow-up; now realized. Adding or removing a subtype in the JS layer is now a 1-file edit.
+- **Drift-protection posture** — durable. The 5 JS consumers cannot drift because they all read from the same array. The only remaining sync surface is the SQL RPC (documented in the shared module's header + in section 2 above).
+- **`64cfc6a` A-UNIT-2 FINAL scope** — retroactively fully realized. What 64cfc6a shipped was correct; 67bb717 was needed to close the chip surface; this dispatch was needed to close the API predicate + prevent future recurrence. All 3 commits together = the durable A-UNIT-2 delivery.
+
+##### 5. Files this dispatch
+
+New:
+- `lib/constants/property-subtypes.ts`
+
+Modified (with `.backup_CONDO-TYPES-FIX_20260706_103226`):
+- `app/property/[id]/HomePropertyPage.tsx` (import replaces local const)
+- `app/api/geo-listings/route.ts` (import replaces both consts)
+- `app/api/neighbourhood-listings/route.ts` (same)
+- `app/sitemap.xml/route.ts` (import replaces local, rename `HOME_SUBTYPES` → `RESIDENTIAL_TYPES` at 1 usage site)
+- `app/[slug]/components/GeoAdvancedFilters.tsx` (import + local aliases)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_CONDO-TYPES-FIX_20260706_103226`)
+
+TSC exit 0. `.env.local` not staged. Backup files untracked (deliberate).
+
+HOLD push per operator dispatch.
+
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
 **File**: `components/LocalBusinessSchema.tsx` (new, 90 lines). Async server component, gated on `isSeoEnabledTenant()`. Deterministic address parser (splits canonical `"street, locality, region postal, country"` format). Falls back to single-line streetAddress if parse fails.

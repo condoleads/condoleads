@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { CONDO_TYPES, RESIDENTIAL_TYPES } from '@/lib/constants/property-subtypes'
 
 export const dynamic = 'force-dynamic'
-
-const CONDO_TYPES = ['Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo', 'Leasehold Condo', 'Detached Condo', 'Co-Ownership Apartment']
-// A-UNIT-2 FINAL (2026-07-05): mirrors HomePropertyPage RESIDENTIAL_TYPES —
-// every Residential Freehold subtype that has a rendering surface.
-const RESIDENTIAL_TYPES = [
-  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
-  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
-  'Rural Residential', 'MobileTrailer',
-  'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
-]
 
 const LISTING_SELECT = 'id, building_id, community_id, municipality_id, listing_id, listing_key, standard_status, transaction_type, list_price, close_price, close_date, unit_number, unparsed_address, bedrooms_total, bathrooms_total_integer, property_type, property_subtype, living_area_range, square_foot_source, parking_total, locker, association_fee, tax_annual_amount, days_on_market, listing_contract_date, building_area_total, lot_width, lot_depth, lot_size_dimensions, lot_size_area, lot_size_area_units, frontage_length, basement, garage_type, garage_yn, approximate_age, legal_stories, architectural_style, cooling, pool_features, fireplace_yn'
 

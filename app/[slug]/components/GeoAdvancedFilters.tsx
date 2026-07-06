@@ -1,6 +1,7 @@
 'use client'
 
 import { X } from 'lucide-react'
+import { RESIDENTIAL_TYPES, CONDO_TYPES } from '@/lib/constants/property-subtypes'
 
 export interface AdvancedFilterState {
   subtypes: string[]
@@ -19,48 +20,15 @@ interface GeoAdvancedFiltersProps {
   propertyCategory?: 'condo' | 'homes'
 }
 
-// GEO-FILTER-SUBTYPES (2026-07-06): both lists must stay in sync with the
-// render-gate constant `RESIDENTIAL_TYPES` in
-// app/property/[id]/HomePropertyPage.tsx and the same-shape lists in
-// app/api/geo-listings/route.ts, app/api/neighbourhood-listings/route.ts,
-// app/sitemap.xml/route.ts, and the SQL RPC public.get_sitemap_listings.
-// If you add a subtype to RESIDENTIAL_TYPES you MUST add it here too, or
-// the chip UI will lag the render scope again (verified stale-gap this
-// session — 8 chips vs 19 rendered subtypes). CONDO_SUBTYPES is the real
-// distinct condo dwelling set from mls_listings (Active, VERIFIED via
-// distinct-value probe this session).
-const CONDO_SUBTYPES = [
-  'Condo Apartment',
-  'Condo Townhouse',
-  'Co-op Apartment',
-  'Common Element Condo',
-  'Detached Condo',
-  'Semi-Detached Condo',
-  'Co-Ownership Apartment',
-  'Leasehold Condo',
-]
-
-const HOME_SUBTYPES = [
-  'Detached',
-  'Semi-Detached',
-  'Att/Row/Townhouse',
-  'Link',
-  'Duplex',
-  'Triplex',
-  'Fourplex',
-  'Multiplex',
-  'Modular Home',
-  'Upper Level',
-  'Lower Level',
-  'Room',
-  'Shared Room',
-  'Rural Residential',
-  'MobileTrailer',
-  'Farm',
-  'Store W Apt/Office',
-  'Other',
-  'Vacant Land',
-]
+// CONDO-TYPES-FIX (2026-07-06): both chip lists imported from
+// lib/constants/property-subtypes.ts as RESIDENTIAL_TYPES + CONDO_TYPES,
+// the single source of truth also used by HomePropertyPage render gate,
+// geo-listings + neighbourhood-listings API predicates, and sitemap.xml
+// chunk counter. Adding a subtype anywhere means editing one file (the
+// shared module). Local aliases below preserve prior variable names to
+// minimize the render-time diff.
+const CONDO_SUBTYPES = CONDO_TYPES
+const HOME_SUBTYPES = RESIDENTIAL_TYPES
 
 const SQFT_OPTIONS = [
   { label: 'Any', value: '' },

@@ -30,6 +30,7 @@
 import { headers } from 'next/headers'
 import { createClient } from '@supabase/supabase-js'
 import { isSeoEnabledTenant } from '@/lib/utils/seo-scope'
+import { RESIDENTIAL_TYPES } from '@/lib/constants/property-subtypes'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -63,15 +64,10 @@ async function resolveRequestContext(): Promise<{ host: string; isTenant: boolea
 // queries (one per property_type) to avoid PostgREST's fragile nested-OR
 // syntax with an IN list. Predicate mirrors public.get_sitemap_listings
 // (migration 373640a) — keep in sync.
-// A-UNIT-2 FINAL (2026-07-05): mirrors HomePropertyPage RESIDENTIAL_TYPES +
-// public.get_sitemap_listings predicate.
-const HOME_SUBTYPES = [
-  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
-  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
-  'Rural Residential', 'MobileTrailer',
-  'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
-]
+// CONDO-TYPES-FIX (2026-07-06): freehold subtype list imported from
+// lib/constants/property-subtypes.ts as RESIDENTIAL_TYPES (single source
+// of truth shared with HomePropertyPage, geo-listings, neighbourhood-listings,
+// and GeoAdvancedFilters chip UI). Local HOME_SUBTYPES literal removed.
 const ACTIVE_STATUSES = ['Active', 'Active Under Contract']
 
 async function computeListingChunks(supabase: ReturnType<typeof serviceClient>): Promise<number> {
@@ -82,7 +78,7 @@ async function computeListingChunks(supabase: ReturnType<typeof serviceClient>):
     supabase.from('mls_listings').select('id', { count: 'exact', head: true })
       .in('standard_status', ACTIVE_STATUSES)
       .eq('property_type', 'Residential Freehold')
-      .in('property_subtype', HOME_SUBTYPES),
+      .in('property_subtype', RESIDENTIAL_TYPES),
   ])
   const total = (condoRes.count ?? 0) + (homeRes.count ?? 0)
   if (total === 0) {

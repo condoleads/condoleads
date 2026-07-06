@@ -12,19 +12,7 @@ import { getTenantByHost } from '@/lib/utils/tenant-brand'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import WalliamCTA from '@/components/WalliamCTA'
 import { getCurrentTenantId, isHeroTenant } from '@/lib/utils/tenant-resolver'
-
-// A-UNIT-2 FINAL (2026-07-05, operator-confirmed scope): every real
-// Residential Freehold subtype in mls_listings renders through this page.
-// Each string verified byte-exact post-btrim this session; the emitter
-// (ListingSchema.tsx) picks the correct schema.org about.@type per subtype
-// (dwelling → Apartment/House/etc.; non-dwelling → Place). Never fabricate.
-const RESIDENTIAL_TYPES = [
-  'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
-  'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
-  'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
-  'Rural Residential', 'MobileTrailer',
-  'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
-]
+import { RESIDENTIAL_TYPES } from '@/lib/constants/property-subtypes'
 
 export const dynamic = 'force-dynamic'
 
