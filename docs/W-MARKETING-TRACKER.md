@@ -1808,6 +1808,206 @@ No new Open Findings surfaced this dispatch.
 
 HOLD push per operator dispatch.
 
+#### A-UNIT-2 USER-FILTER RECON — surface distinction (2026-07-06)
+
+Reconcile: 64cfc6a delivered the RENDER + SCHEMA surface for 19 subtypes. This dispatch verifies whether the USER-FACING subtype filter UI reflects the same 19 subtypes, or is stale — the two are distinct surfaces (a subtype can render a page yet be missing from the filter chip list, or vice versa).
+
+##### 1. What 64cfc6a shipped — precisely
+
+VERIFIED this session (`git log 64cfc6a`, code inspection):
+
+| Surface | State post-64cfc6a |
+|---|---|
+| Render gate on `app/property/[id]/HomePropertyPage.tsx:16` (`RESIDENTIAL_TYPES`) | ✅ **19 subtypes** — pages render for all 11 newly-added + 8 original |
+| Schema emitter `app/property/[id]/components/ListingSchema.tsx` (`aboutTypeFromSubtype`) | ✅ **19 subtypes** — each maps to honest schema.org `@type` (Place for non-dwellings) |
+| Postgres predicate `app/api/geo-listings/route.ts:7` (`RESIDENTIAL_TYPES` — homes-category `.in()`) | ✅ **19 subtypes** — `.in('property_subtype', RESIDENTIAL_TYPES)` matches |
+| Postgres predicate `app/api/neighbourhood-listings/route.ts:14` (same shape) | ✅ **19 subtypes** |
+| Sitemap `HOME_SUBTYPES` at `app/sitemap.xml/route.ts:66` | ✅ **19 subtypes** |
+| `public.get_sitemap_listings` SQL RPC (migration `20260705_a_unit_2_final_sitemap_rpc_widen.sql`, COMMITTED) | ✅ **19 subtypes** |
+| UI null-omit guards on beds/baths/sqft (3 files) | ✅ Shipped |
+
+**What 64cfc6a did NOT ship**: the user-facing subtype-filter chip list in the "Advanced filters" panel on geo pages. That surface has its own hardcoded list — see below.
+
+##### 2. Is there a user-facing subtype filter? — VERIFIED
+
+**YES.** One user-facing filter component surfaces subtype chips to visitors:
+
+- **File**: `app/[slug]/components/GeoAdvancedFilters.tsx` (VERIFIED verbatim this session).
+- **Shape**: two hardcoded arrays — `CONDO_SUBTYPES` (4 values, lines 22-27) and `HOME_SUBTYPES` (8 values, lines 29-38). At render, `subtypeOptions` picks by `propertyCategory` prop (line 61-63): `'condo'` → `CONDO_SUBTYPES`; `'homes'` → `HOME_SUBTYPES`; else → concatenation of both.
+- **Mount points** (VERIFIED via `grep -rn "GeoAdvancedFilters"`): 3 files import it →
+  - `app/[slug]/components/GeoListingSection.tsx:12` — used by `GeoPageTabs` → mounted on `CommunityPage.tsx`, `MunicipalityPage.tsx`, `AreaPage.tsx`.
+  - `app/[slug]/components/NeighbourhoodListingSection.tsx` — used by `NeighbourhoodPageTabs` → mounted on `app/comprehensive-site/toronto/[neighbourhood]/page.tsx`.
+- **User surface**: 4 page types (Community, Municipality, Area, Neighbourhood) present these subtype chips to visitors as clickable filter tokens.
+
+**Data source**: HARDCODED literal arrays (not derived from the DB). VERIFIED verbatim.
+
+##### 3. Is the hardcoded list STALE vs the 19-subtype render scope? — VERIFIED
+
+Verbatim from `GeoAdvancedFilters.tsx:29-38`:
+```
+const HOME_SUBTYPES = [
+  'Detached',
+  'Semi-Detached',
+  'Att/Row/Townhouse',
+  'Link',
+  'Duplex',
+  'Triplex',
+  'Fourplex',
+  'Multiplex',
+]
+```
+
+That is the **original 8-subtype list**. Comparison against the 19-subtype render scope shipped in 64cfc6a:
+
+| Subtype | Renders a page (64cfc6a) | Appears in user filter (GeoAdvancedFilters) |
+|---|:---:|:---:|
+| Detached | ✅ | ✅ |
+| Semi-Detached | ✅ | ✅ |
+| Att/Row/Townhouse | ✅ | ✅ |
+| Link | ✅ | ✅ |
+| Duplex | ✅ | ✅ |
+| Triplex | ✅ | ✅ |
+| Fourplex | ✅ | ✅ |
+| Multiplex | ✅ | ✅ |
+| **Modular Home** | ✅ | ❌ MISSING |
+| **Upper Level** | ✅ | ❌ MISSING |
+| **Lower Level** | ✅ | ❌ MISSING |
+| **Room** | ✅ | ❌ MISSING |
+| **Shared Room** | ✅ | ❌ MISSING |
+| **Rural Residential** | ✅ | ❌ MISSING |
+| **MobileTrailer** | ✅ | ❌ MISSING |
+| **Farm** | ✅ | ❌ MISSING |
+| **Store W Apt/Office** | ✅ | ❌ MISSING |
+| **Other** | ✅ | ❌ MISSING |
+| **Vacant Land** | ✅ | ❌ MISSING |
+
+**VERDICT — VERIFIED STALE-GAP**: the user-facing subtype filter is hardcoded and missing all 11 newly-added subtypes. A visitor browsing Community/Municipality/Area/Neighbourhood pages CAN reach an individual (e.g.) Vacant Land page (it renders + emits schema now), but CANNOT filter the geo-page listing tab to show only Vacant Land — the chip does not exist in the UI. Same for the other 10.
+
+##### 4. Behavior when a visitor hits geo pages today
+
+VERIFIED via code trace (`GeoListingSection.tsx:85` sends `subtypes=...` param; server route `/api/geo-listings:71` uses `RESIDENTIAL_TYPES.in()` for propertyCategory='homes'):
+- With **no subtypes filter selected**: server route's `.in(RESIDENTIAL_TYPES)` matches all 19 subtypes → listings for all 19 appear in the geo-page results (mixed).
+- With **any subtypes filter selected via chip**: `subtypes` param is the joined chip list (only from the 8 hardcoded). New subtypes are un-selectable → results narrow to only the selected old subtypes.
+- No 404 introduced — the filter is *additive*; missing chips just mean the user cannot narrow *to* those subtypes.
+
+So Rule Zero #1 is NOT violated on the filter surface (no fabricated chip, no fabricated result). It is a **coverage gap**, not a data-integrity bug.
+
+##### 5. Condo-side note (pre-existing, out-of-scope for A-UNIT-2)
+
+For completeness — `CONDO_SUBTYPES` in the same file (lines 22-27) lists only 4 of the 7 DB condo subtypes: missing `Detached Condo`, `Semi-Detached Condo`, `Co-Ownership Apartment`, `Leasehold Condo`. This is a pre-existing gap, independent of A-UNIT-2's render-gate work. Log for follow-up, not this dispatch.
+
+##### 6. Verdict — plain
+
+- **User-facing subtype filter status**: **VERIFIED present, VERIFIED stale-gap**. Location: `app/[slug]/components/GeoAdvancedFilters.tsx:29-38` (`HOME_SUBTYPES`). Data source: HARDCODED literal (not derived). Missing 11 of the 19 render-scope subtypes.
+- **64cfc6a scope reconciled**: shipped the RENDER + SCHEMA + API-predicate + SITEMAP-RPC surfaces for 19 subtypes. Did NOT ship the user-facing filter-chip surface. These are separate surfaces; the tracker distinguishes them.
+- **Blast radius of the stale filter**: additive — visitors cannot narrow *to* new subtypes; results without a filter selection already include the new subtypes (via the widened server predicate). No 404, no fabrication, no Rule Zero #1 violation.
+- **Fix scope (next dispatch, if operator wants)**: extend `HOME_SUBTYPES` in `GeoAdvancedFilters.tsx` from 8 → 19; ALSO consider extending `CONDO_SUBTYPES` from 4 → 7 (pre-existing gap). Regression surface: chip UI layout may want wrapping / grouping when it grows to 19; smoke each of the 4 page types (Community, Municipality, Area, Neighbourhood) to confirm chip render + click-toggle + server-side result shape. Not this dispatch.
+
+##### 7. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-2-USER-FILTER-RECON_20260706_095909`. Data queries: none needed (this is a code-inspection recon, not a data recon; DB was not queried). Every claim above verified against a code file this session; nothing marked "claimed, unverified."
+
+#### GEO-FILTER-SUBTYPES FIX — SHIPPED (2026-07-06)
+
+Closes the two open user-filter gaps flagged in the prior recon: (a) `HOME_SUBTYPES` chip list was 8 while the render scope is 19; (b) `CONDO_SUBTYPES` chip list was 4 while there are 8 real condo dwelling subtypes in the DB. Same file, same shape, additive.
+
+##### 1. Step 0 — DB truth verified (READ-ONLY)
+
+`SELECT DISTINCT property_type, property_subtype FROM mls_listings WHERE standard_status='Active' AND property_type IN ('Residential Freehold','Residential Condo & Other')` — this session. Byte-level probe (`encode(::bytea,'hex')`) confirmed every returned string is clean (no whitespace) post-c7441de/64cfc6a normalization.
+
+**Residential Freehold (Active) distinct subtypes** (VERIFIED, 19 total):
+```
+Detached (43,411), Att/Row/Townhouse (6,078), Vacant Land (5,663),
+Semi-Detached (3,878), Multiplex (1,341), Duplex (1,154), Farm (529),
+Triplex (525), MobileTrailer (500), Rural Residential (490), Other (436),
+Fourplex (316), Lower Level (285), Link (255), Modular Home (229),
+Upper Level (166), Store W Apt/Office (147), Room (34), Shared Room (5)
+```
+This exactly matches `RESIDENTIAL_TYPES` in `app/property/[id]/HomePropertyPage.tsx:16` (19 entries).
+
+**Residential Condo & Other (Active) distinct subtypes** (VERIFIED, 19 total — most low-volume):
+```
+Condo Apartment (21,249), Condo Townhouse (5,839), Common Element Condo (603),
+Other (261), Co-op Apartment (161), Detached Condo (140), Parking Space (133),
+Vacant Land Condo (124), Semi-Detached Condo (52), Leasehold Condo (47),
+Co-Ownership Apartment (45), Locker (17), Upper Level (17), Timeshare (9),
+Room (7), Att/Row/Townhouse (2), Shared Room (1), Phased Condo (1),
+Lower Level (1)
+```
+Dwelling-shaped condo subtypes (≥45 Active rows each): **8 total** — Condo Apartment, Condo Townhouse, Common Element Condo, Co-op Apartment, Detached Condo, Semi-Detached Condo, Co-Ownership Apartment, Leasehold Condo. The non-dwelling condo tails (Parking Space, Locker, Vacant Land Condo, Timeshare, Phased Condo, Room, Upper/Lower/Shared, Att/Row/Townhouse condo edge cases, Other) intentionally excluded from the chip UI — most already covered by the freehold chips or are non-dwelling amenities users would search separately.
+
+**Prior-recon numerical correction**: the A-UNIT-2 USER-FILTER RECON section above said "only 4 of the 7 DB condo subtypes" — that was arithmetically off (should have been "4 of 8 dwelling-shaped"). Recorded here to close the loop; no impact on the fix since we extended to 8 either way.
+
+##### 2. Step 1 — Approach decision (Option B: extend literals + tie-comment)
+
+Options considered:
+- **A. Shared module** — move `RESIDENTIAL_TYPES` to a new `lib/constants/property-subtypes.ts`, re-import from 5 files (`HomePropertyPage.tsx`, `geo-listings/route.ts`, `neighbourhood-listings/route.ts`, `sitemap.xml/route.ts`, `GeoAdvancedFilters.tsx`). Fully prevents future drift by construction.
+- **B. Extend literals in-place with a tie-comment** — 1 file, 2 lists → 8/19 entries each, plus a code comment binding both arrays to `RESIDENTIAL_TYPES` at `HomePropertyPage.tsx:16` and the 3 sibling constants, with an explicit "if you edit one you must edit all — verified stale-gap this session" note.
+
+**Chose B**. Rationale: CLAUDE.md's "Don't refactor beyond what the task requires" — Option A would touch 5 files for a shared-module refactor that is orthogonal to the immediate user-filter gap. Option B closes the current gap with a 1-file edit and leaves the shared-module refactor as a follow-up if the drift recurs. Option A logged as OPEN follow-up (see item 5).
+
+##### 3. Edit — VERBATIM
+
+File: [app/[slug]/components/GeoAdvancedFilters.tsx](app/[slug]/components/GeoAdvancedFilters.tsx). Backup: `app/[slug]/components/GeoAdvancedFilters.tsx.backup_GEO-FILTER-SUBTYPES_20260706_100734`.
+
+- `HOME_SUBTYPES`: 8 → **19** entries (adds Modular Home, Upper Level, Lower Level, Room, Shared Room, Rural Residential, MobileTrailer, Farm, Store W Apt/Office, Other, Vacant Land).
+- `CONDO_SUBTYPES`: 4 → **8** entries (adds Detached Condo, Semi-Detached Condo, Co-Ownership Apartment, Leasehold Condo).
+- Tie-comment above both arrays references the 5 sibling constants (`RESIDENTIAL_TYPES` at `HomePropertyPage.tsx:16`, `geo-listings`, `neighbourhood-listings`, `sitemap.xml`, and the SQL RPC) with "must move together" instruction.
+
+TSC exit 0 on the edit.
+
+##### 4. Step 2 — Smoke matrix (both tenants, 4 page types, chip round-trip)
+
+**aily.ca — 4 geo pages render 200**:
+| Page type | URL | HTTP | H1 |
+|---|---|---:|---|
+| Community | `/grindstone` | 200 | Grindstone Real Estate |
+| Municipality | `/toronto-e02` | 200 | Toronto E02 Real Estate |
+| Area | `/chatham-kent-area` | 200 | Chatham-Kent Real Estate |
+| Neighbourhood | `/toronto/downtown` | 200 | Downtown Real Estate |
+
+**Compiled JS bundle probe** — chunk `/_next/static/chunks/app/comprehensive-site/%5Bslug%5D/page.js` (mounts `GeoAdvancedFilters`) contains all 15 net-new subtype string literals (each `x1-x4` occurrences) — verified this session by direct chunk fetch + `grep -Fc`. Chip strings ship in the client bundle, not just in the tracker.
+
+**End-to-end round-trip — each new chip actually filters**:
+| Chip | Geo scope | HTTP | Rows returned | Subtypes in result |
+|---|---|---:|---:|---|
+| `subtypes=Farm` | community `33b0701d-…` (top Farm-community, DB n=13 Active) | 200 | 11 | `{Farm: 11}` ✓ pure |
+| `subtypes=Vacant Land` | community `51f44580-…` (DB n=111 Active) | 200 | 50 of 109 | `{Vacant Land: 50}` ✓ pure (pageSize=50) |
+| `subtypes=Modular Home` | muni `b23b066f-…` (DB n=19 Active) | 200 | 19 | `{Modular Home: 19}` ✓ pure |
+| `subtypes=Farm,Rural Residential` (multi) | muni `b23b066f-…` | 200 | 3 | `{Farm: 2, Rural Residential: 1}` ✓ mixed as expected |
+| `subtypes=Detached Condo` | community `31653110-…` (DB n=12 Active) | 200 | 12 | `{Detached Condo: 12}` ✓ pure |
+
+Every chip round-trips end-to-end: client posts `subtypes=` → `/api/geo-listings` uses `.in('property_subtype', typeList)` at [route.ts:78](app/api/geo-listings/route.ts#L78) → server returns only rows matching selected chip(s). No leak, no un-requested subtypes in results.
+
+**Chip-layout regression check** — [GeoAdvancedFilters.tsx:145](app/[slug]/components/GeoAdvancedFilters.tsx#L145) uses `<div className="flex flex-wrap gap-1.5">` around the chip `<button>` list. `flex-wrap` guarantees the row grows vertically as chips overflow horizontally, so 19 chips wrap gracefully on desktop (~3-4 rows) and mobile (~7-8 rows). No fixed height/width constraint on the container. Verified verbatim; no regression.
+
+**walliam.ca — 4 geo pages render + filter functional (non-SEO tenant)**:
+| Page type | HTTP | JSON-LD `RealEstateListing` |
+|---|---:|---:|
+| Community `/grindstone` | 200 | 0 (SEO gate intact) |
+| Municipality `/toronto-e02` | 200 | 0 |
+| Area `/chatham-kent-area` | 200 | 0 |
+| Neighbourhood `/toronto/downtown` | 200 | 0 |
+
+`subtypes=Farm` round-trip on walliam.ca (`Host: walliam.ca`, same community): **HTTP 200, 11 rows, all Farm** — identical to aily.ca (correct — filter is a functional UI, not an SEO surface; results are data-plane and identical across tenants; the SEO gate strips only JSON-LD, not listing data).
+
+##### 5. Verdicts
+
+- **User-facing subtype filter stale-gap** (freehold 8 → 19): **CLOSED**.
+- **CONDO_SUBTYPES pre-existing gap** (4 → 8): **CLOSED**.
+- **Shared-module refactor (Option A)** — logged as OPEN follow-up. Present drift protection is the tie-comment + this tracker note; if the drift recurs a second time, promote to Option A (5-file refactor).
+- No new Open Findings surfaced this dispatch.
+
+##### 6. Files this dispatch
+
+Modified (with `.backup_GEO-FILTER-SUBTYPES_20260706_100734`):
+- `app/[slug]/components/GeoAdvancedFilters.tsx`
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_GEO-FILTER-SUBTYPES_20260706_100734`)
+
+No SQL write. No new file. `.env.local` remains git-ignored — not staged. Backup files untracked (deliberate). TSC exit 0.
+
+HOLD push per operator dispatch.
+
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
 **File**: `components/LocalBusinessSchema.tsx` (new, 90 lines). Async server component, gated on `isSeoEnabledTenant()`. Deterministic address parser (splits canonical `"street, locality, region postal, country"` format). Falls back to single-line streetAddress if parse fails.

@@ -19,11 +19,25 @@ interface GeoAdvancedFiltersProps {
   propertyCategory?: 'condo' | 'homes'
 }
 
+// GEO-FILTER-SUBTYPES (2026-07-06): both lists must stay in sync with the
+// render-gate constant `RESIDENTIAL_TYPES` in
+// app/property/[id]/HomePropertyPage.tsx and the same-shape lists in
+// app/api/geo-listings/route.ts, app/api/neighbourhood-listings/route.ts,
+// app/sitemap.xml/route.ts, and the SQL RPC public.get_sitemap_listings.
+// If you add a subtype to RESIDENTIAL_TYPES you MUST add it here too, or
+// the chip UI will lag the render scope again (verified stale-gap this
+// session — 8 chips vs 19 rendered subtypes). CONDO_SUBTYPES is the real
+// distinct condo dwelling set from mls_listings (Active, VERIFIED via
+// distinct-value probe this session).
 const CONDO_SUBTYPES = [
   'Condo Apartment',
   'Condo Townhouse',
   'Co-op Apartment',
   'Common Element Condo',
+  'Detached Condo',
+  'Semi-Detached Condo',
+  'Co-Ownership Apartment',
+  'Leasehold Condo',
 ]
 
 const HOME_SUBTYPES = [
@@ -35,6 +49,17 @@ const HOME_SUBTYPES = [
   'Triplex',
   'Fourplex',
   'Multiplex',
+  'Modular Home',
+  'Upper Level',
+  'Lower Level',
+  'Room',
+  'Shared Room',
+  'Rural Residential',
+  'MobileTrailer',
+  'Farm',
+  'Store W Apt/Office',
+  'Other',
+  'Vacant Land',
 ]
 
 const SQFT_OPTIONS = [
