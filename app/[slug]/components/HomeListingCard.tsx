@@ -145,8 +145,12 @@ export default function HomeListingCard({
     <>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div style={{ animation:'fadeSlideUp 0.45s ease both', animationDelay:`${index*55}ms` }}>
+        {/* LANE-B-1-VERIFY (2026-07-06): the card's PRIMARY navigation is now
+            the anchor — see GeoListingCard for the full rationale. Prior
+            sr-only-appendage pattern was bot-only; humans still fell to
+            window.open. Nested pills already stopPropagation. */}
+        <a href={propertyUrl} className="block no-underline text-inherit">
         <article
-          onClick={() => window.open(propertyUrl,'_blank')}
           onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
           onMouseEnter={() => { setIsHovered(true); if(!allPhotosLoaded) loadAllPhotos() }}
           onMouseLeave={() => setIsHovered(false)}
@@ -343,6 +347,7 @@ export default function HomeListingCard({
             )}
           </div>
         </article>
+        </a>
       </div>
 
       <RegisterModal

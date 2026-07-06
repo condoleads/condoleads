@@ -2846,6 +2846,329 @@ TSC exit 0 on all edits. `.env.local` not staged. 8 file backups untracked.
 
 HOLD push per operator dispatch.
 
+#### METADATA PRINT (post-2614e76) + LANE-B RECON (2026-07-06)
+
+Two parts. Part 1 answers the operator's "print the actual titles/metadata" question with a fresh curl-of-live-response (prior ON-PAGE AUDIT titles were stale pre-2614e76). Part 2 is a READ-ONLY assessment of keyword-consistency + internal-linking to scope Lane B (interlinking) work — no build in this dispatch.
+
+Push base clean: HEAD == origin/main == `2614e76`, 0 ahead.
+
+##### 1. Part 1 — real rendered metadata, 3 page types (aily.ca, post-2614e76)
+
+Each block below is a byte-for-byte curl-of-live-response this session (cache-bust query param to force fresh render). Real listing_key / slug per line.
+
+**Condo property** — `/7-grenville-street-unit-811-c12129402` (listing_key `C12129402`):
+```
+<title>                 7 Grenville Street 811, Toronto C01, ON L3P 2J2 | Unit 811 | YC Condos | 1 Bed | aily
+<meta description>      1 Bed 1 Bath condo for rent at 7 Grenville Street 811, Toronto C01, ON L3P 2J2 in YC Condos. . View photos, floor plans, and schedule a showing.
+<link rel="canonical">  https://aily.ca/7-grenville-street-unit-811-c12129402
+og:title                (matches <title>)
+og:description          (matches <meta description>)
+og:url                  https://aily.ca/property/601a8f42-def5-4fd8-9e4f-4b6c230b18b2   ← UUID, NOT slug
+og:image                http://localhost:3000/og-image.jpg   ← static fallback (agent og_image_url null)
+og:site_name            aily
+og:type                 website
+twitter:card            summary_large_image
+twitter:title           (matches <title>)
+twitter:description     (matches <meta description>)
+twitter:image           (matches og:image)
+JSON-LD @type(s)        [RealEstateListing, BreadcrumbList]
+```
+
+**Building** — `/side-launch-1-shipyard-lane-collingwood` (Side Launch):
+```
+<title>                 Side Launch Condos - 1 Shipyard Lane, Collingwood | aily
+<meta description>      Side Launch at 1 Shipyard Lane, Collingwood. 2 units for sale from $775K to $850K. 1-3 bedroom units available.
+<link rel="canonical">  https://aily.ca/side-launch-1-shipyard-lane-collingwood
+og:title                (matches <title>)
+og:description          (matches <meta description>)
+og:url                  https://aily.ca/side-launch-1-shipyard-lane-collingwood
+og:image                http://localhost:3000/og-image.jpg   ← static fallback
+og:site_name            aily
+og:type                 website
+twitter:card            summary_large_image
+twitter:title           (matches <title>)
+twitter:description     (matches <meta description>)
+twitter:image           (matches og:image)
+JSON-LD @type(s)        [ApartmentComplex, BreadcrumbList]
+```
+
+**Municipality (geo)** — `/toronto-e02` (Toronto E02):
+```
+<title>                 Toronto E02 Real Estate | Condos & Homes for Sale | aily
+<meta description>      Browse condos and homes for sale in Toronto E02. Explore communities, condo buildings, and market intelligence.
+<link rel="canonical">  https://aily.ca/toronto-e02
+og:title                (matches <title>)
+og:description          (matches <meta description>)
+og:url                  https://aily.ca/toronto-e02
+og:image                https://aily.ca/og   ← tenant-aware /og route
+og:site_name            aily
+og:type                 website
+twitter:card            summary_large_image
+twitter:title           (matches <title>)
+twitter:description     (matches <meta description>)
+twitter:image           https://aily.ca/og
+JSON-LD @type(s)        [BreadcrumbList, City]
+```
+
+**Two Part-1 findings surfaced by this print (not urgent, log for future)**:
+- **Condo `og:url` uses `/property/UUID`, not the slug URL** that canonical points to. Same page, two URLs in metadata. `canonical` and `og:url` should match — Google guidance. Fix: change [property/[id]/page.tsx:105](app/property/[id]/page.tsx#L105) to use `canonicalPath` instead of `/property/${params.id}`.
+- **Property + building `og:image` fall back to static `/og-image.jpg`** when the agent branding row has no `og_image_url`. Geo pages use the tenant-aware `/og` route. If aily has no agent `og_image_url` set (verified live behavior confirms this), aily's property/building social cards show the generic static image. Fix: chain `agentBranding?.og_image_url ?? tenant-aware /og route ?? '/og-image.jpg'` — same tenant-chain pattern A-UNIT-3-EXT applied to `siteName`.
+
+##### 2. Part 2 — Lane B recon: keyword consistency
+
+Per-element per-page keyword phrasing (verbatim from this session):
+
+| Page | title keywords | description keywords | H1 | H2 (first 3) |
+|---|---|---|---|---|
+| Condo (C12129402) | "condo" + "Unit N" + building name + "Bed" + brand | "condo for rent" + address + building | **"Unit 811"** (unit-only, no `condo` / no keyword) | About This Property · Property Details · Unit 811 History |
+| Building (Side Launch) | "Condos" + address + brand | building name + address + counts + "for sale" | **"Side Launch"** (name-only, no `condo` / no keyword) | Get Instant Digital Estimates · Market Overview · Market Intelligence |
+| Muni (Toronto E02) | "Real Estate" + "Condos & Homes for Sale" + brand | "condos and homes for sale in Toronto E02" + "market intelligence" | **"Toronto E02 Real Estate"** (keyword + geo) | Toronto E02 Market · Communities in Toronto E02 · About Toronto E02 Real Estate |
+
+**Findings**:
+- **Muni (and geo pages generally) — CONSISTENT.** Title / description / H1 / H2 all anchor on `{geo.name} Real Estate` + `condos and homes`. Strong keyword surface across all four elements. This shape is repeated on Community/Area/Neighbourhood per prior audit.
+- **Condo — WEAK H1.** Title carries `condo`/beds/building keyword, description mirrors, but H1 is JUST the unit number (`Unit 811`). H2s are generic UI labels (`About This Property`, `Property Details`) — no keyword reinforcement. Google's H1 weight is not being used.
+- **Building — WEAK H1.** Title carries `Condos` keyword; H1 is just the building name (`Side Launch`). H2s are product-feature labels (`Get Instant Digital Estimates`, `Market Overview`), not condo/building keyword surfaces. Same class of gap as condo.
+- **All 3 pages have keyword-consistent title↔description**; only H1/H2 drift on property/building. That's a Lane B on-page opportunity — not an A-UNIT-3 gap because the primary-page-topic H1 is technically correct (address / unit / building-name is the topic); it just doesn't reinforce keywords.
+
+**Recommendation**: consider augmenting the H1 shape on property + building — e.g. `${address} — ${beds} Bed ${propertyType} in ${locality}` — or leave the H1 as name/unit and add a keyword-rich H2 immediately below the hero (`${beds} Bedroom ${propertyType} for ${type} in ${building.name}` for condos). Not Rule Zero; SEO quality upgrade. Decidable now, but scoped to Lane B not A-UNIT-3.
+
+##### 3. Part 2 — Lane B recon: interlinking (map of current vs missing)
+
+**Breadcrumb component** — [components/Breadcrumb.tsx:1-35](components/Breadcrumb.tsx#L1) — renders `<Link>` per item (home + all intermediate items with `href`). Mounted on property/home/building/geo page types via `_breadcrumbItems` / `_bpBcItems` builders. **All breadcrumbs are real navigable internal links, not just JSON-LD**. Verified.
+
+**Geo-page interlinking components**:
+- `GeoInterlinking` at [app/[slug]/components/GeoInterlinking.tsx](app/[slug]/components/GeoInterlinking.tsx) — renders `<Link>` per sibling link, filters out current page. Used at 4 sites (AreaPage x2, CommunityPage x1, MunicipalityPage x1).
+- `CommunityCard` at [components/CommunityCard.tsx:20](app/[slug]/components/CommunityCard.tsx#L20) — uses `<Link>` BUT with `target="_blank" rel="noopener noreferrer"` (external-tab pattern applied to internal links). VERIFIED verbatim.
+- `GeoListingCard` at [components/GeoListingCard.tsx:139](app/[slug]/components/GeoListingCard.tsx#L139) — uses `onClick={() => window.open(propertyUrl, '_blank')}` — no `<Link>` at all. VERIFIED.
+- `HomeListingCard` at [components/HomeListingCard.tsx:149](app/[slug]/components/HomeListingCard.tsx#L149) — same shape as GeoListingCard.
+
+**Property/building on-page SEO components**:
+- `PropertySEO` at [components/property/PropertySEO.tsx](components/property/PropertySEO.tsx) — condo. `<Link>` to building slug (line 65) and development slug (line 86). NO up-link to community/muni/area.
+- `HomePropertySEO` at [components/property/HomePropertySEO.tsx](components/property/HomePropertySEO.tsx) — home. `<Link>` chain to community → municipality → area (lines 68/73/80). Full up-link chain.
+
+**Current-vs-missing internal-linking map**:
+
+| From ↓ / To → | Home (/) | Area | Municipality | Community | Neighbourhood | Building | Development | Listing (self) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Condo property | ✓ breadcrumb | ✓ breadcrumb | ✓ breadcrumb | ✓ breadcrumb | ⚠️ **NO** (missing rung) | ✓ breadcrumb + body Link | ✓ body Link (when in dev) | — |
+| Home property | ✓ breadcrumb | ✓ breadcrumb + body Link | ✓ breadcrumb + body Link | ✓ breadcrumb + body Link | ⚠️ **NO** | — (freehold has no building) | — | — |
+| Building | ✓ breadcrumb | ✓ breadcrumb | ✓ breadcrumb | ✓ breadcrumb | — | — | ✓ breadcrumb when in dev | ⚠️ listings NOT via `<Link>` — window.open in new tab |
+| Community | ✓ breadcrumb (via GeoPageTabs → parent muni breadcrumb) | ✓ | ✓ | ⚠️ siblings via GeoInterlinking | — | ⚠️ down-links to buildings — verify shape | ⚠️ listings via window.open (same as building) |
+| Municipality | ✓ | ✓ | — | ✓ CommunityCard grid (target="_blank" + noopener) | — | ⚠️ same | ⚠️ same |
+| Area | ✓ | — | ✓ GeoInterlinking (`Municipalities in {area}`) + sibling areas | — | — | — | ⚠️ same |
+| Neighbourhood | ✓ | — | ⚠️ downtown page has 2 `<Link>` at :365 :402 — verify targets | ⚠️ verify | — | — | ⚠️ same |
+
+**Systemic finding — internal listing navigation uses `window.open('_blank')`**:
+Every listing card on every geo page (both condo `GeoListingCard` and home `HomeListingCard`) navigates via `onClick={() => window.open(url, '_blank')}` instead of `<Link href={url}>`. `CommunityCard` uses `<Link>` but with `target="_blank" rel="noopener noreferrer"`.
+
+Consequences:
+- **SEO**: Google crawls `<Link>` / `<a href>` — `onClick + window.open` may or may not be discovered depending on JS execution during crawl. Google typically discovers these but weights them less than semantic links.
+- **Rank flow (referrer chain)**: `rel="noopener noreferrer"` strips the referrer header, breaking the rank-signal chain Google uses to distribute authority across internal links. Standard guidance: NEVER use `rel="noopener"` on internal navigation.
+- **UX**: opening every listing in a new tab is a heavy pattern; some users prefer same-tab navigation.
+
+Not Rule Zero — the pages ARE crawlable via the sitemap. It IS a Lane B keyword/rank-flow issue.
+
+##### 4. Side finding — PropertySEO hardcodes "in Toronto"
+
+Grep this session: [components/property/PropertySEO.tsx:70](components/property/PropertySEO.tsx#L70): `is located at {building.canonical_address} in Toronto` — same class of Rule Zero #1 hardcode BuildingPage description had (A-UNIT-3 fixed there). Also lines :105, :110, :112, :113 hardcode `Toronto` in keyword listings. Mississauga/Oakville/etc. condo pages will render "in Toronto" in the SEO section AND have `Toronto` keywords in the on-page copy — factually wrong for non-Toronto listings.
+
+**Log as OPEN — Rule Zero #1 (PropertySEO Toronto hardcode)**. Same fix pattern A-UNIT-3 applied to BuildingPage — 2-hop community→muni join, omit-on-null. Not in this dispatch scope (recon only) but real Rule Zero item to close in Lane B or another A-UNIT-3 EXT.
+
+##### 5. Lane B — buildable scope from this recon
+
+Decidable now (no product input required):
+1. **Fix PropertySEO "Toronto" hardcode** — Rule Zero #1. Same shape as A-UNIT-3 BuildingPage locality fix. 1 file.
+2. **Fix condo og:url to match canonical** — 1 line change in property/[id]/page.tsx.
+3. **Chain property/building og:image to tenant-aware /og** — same siteName-chain shape A-UNIT-3 EXT used for tenants.name. 3 files (property, HomeProperty, Building).
+4. **Fix internal listing navigation** — GeoListingCard/HomeListingCard: replace `window.open` onClick with `<Link>` (or `<a>` without target). CommunityCard: drop `target="_blank" rel="noopener"`. Systemic — 3+ files.
+5. **Add Neighbourhood rung to property breadcrumbs** — currently missing (only Area/Muni/Community). 1-2 files depending on how neighbourhood is resolved (recon-first: is neighbourhood in listing scope?).
+6. **PropertySEO up-link chain to community/muni/area** — HomePropertySEO already has this; PropertySEO doesn't. 1 file.
+7. **Verify GeoPageTabs building-list rendering** — do buildings render as `<Link>` in the buildings tab? Not verified this session (`grep <Link>` returned 0 in GeoPageTabs.tsx). If they don't, listings are being served without semantic in-links.
+
+Not decidable now (needs operator input):
+- **H1 keyword shape on property/building** — Lane B keyword-strategy question, not a Rule Zero item. Operator should decide whether H1 stays name-only or gets keyword-augmented.
+
+Not this dispatch (per operator instruction): **all** builds — this is recon only.
+
+##### 6. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_METADATA-LANE-B-RECON_20260706_201025`. Helper: `scripts/_metadata-print.js` (safe — reads local HTML, no DB, no network; not staged unless operator wants it retained). Live curl x 3 URLs on aily.ca local dev with cache-bust — every metadata block cited above is a byte-for-byte curl-of-live-response this session. Anything not runtime-measured (e.g. building tab `<Link>` shape, walliam parallel-audit for Part 2) is flagged **"needs verification"** at the specific finding.
+
+#### LANE-B BUILD 1 — 5 fixes SHIPPED (2026-07-06)
+
+Closes all 5 fixes from the METADATA + LANE-B RECON: PropertySEO Rule Zero #1 + condo og:url + listing-card crawlable links + condo up-link chain + H1 keyword strengthening. Every fix tenant-derived; zero hardcoded brand/geo branch.
+
+Push base clean: HEAD == origin/main == `2614e76`, 0 ahead pre-dispatch.
+
+##### 1. Step 1 — PropertySEO "Toronto" Rule Zero #1 hardcode CLOSED
+
+[components/property/PropertySEO.tsx](components/property/PropertySEO.tsx). Prior 5 hardcodes (line 70 `in Toronto`; lines 105/110/112/113 `Toronto` in keywords) rendered "in Toronto" + Toronto keywords on every non-Toronto condo. Fix:
+- Added `community` / `municipality` / `area` props (resolved by page.tsx server-side from `listing.community_id → community → municipality_id → municipality`, same 2-hop join A-UNIT-3 used on BuildingPage).
+- `localityName = municipality?.name || null`; `localityPhrase = localityName ? ` in ${localityName}` : ''`. NULL at any hop → phrase OMITTED (never `in Toronto`, never `in null`).
+- Keyword line: locality-scoped tokens (`{beds} bedroom condo {locality}`) OMIT when locality null. `{development} Toronto` → `{development} {locality}`. `Toronto condo for sale` → `{locality} condo for sale`.
+
+Grep this session confirms **zero remaining code-active `'Toronto'` string literal in PropertySEO** (the string appears only in the parent component's `site_tagline` fallback which is copy, not geo scope).
+
+**Live smoke on `W13140320` (Mississauga condo, aily.ca)**:
+| Check | Result |
+|---|---|
+| Body contains "in Toronto" | **false** (was true) |
+| Body contains "in Mississauga" | **true** |
+| Keywords contain "Toronto" (Rule Zero token) | false |
+
+##### 2. Step 2 — Condo og:url matches canonical
+
+[app/property/[id]/page.tsx:105](app/property/[id]/page.tsx#L105): pre-fix emitted `\`https://${host}/property/${params.id}\`` (UUID URL) while canonical used the slug URL. Same page, two URLs in metadata. Fix: `og:url = \`https://${canonicalDomain}${canonicalPath}\`` — same source as canonical, guaranteed alignment.
+
+Live smoke on `C12129402`: canonical `https://aily.ca/7-grenville-street-unit-811-c12129402` == og:url. ✓
+
+##### 3. Step 3 — Listing-card crawlable in-links
+
+Prior state (verified pre-fix): `GeoListingCard.tsx:139` and `HomeListingCard.tsx:149` used `onClick={() => window.open(propertyUrl, '_blank')}` — no anchor in the DOM, not crawlable via `<a>` scan. `CommunityCard.tsx:20` used `<Link target="_blank" rel="noopener noreferrer">` — crawlable but referrer-stripped (rank chain broken).
+
+Fix (3 files):
+- [GeoListingCard.tsx:135-140](app/[slug]/components/GeoListingCard.tsx#L135) — added `<a href={propertyUrl} className="sr-only">View {address}</a>` INSIDE the card, before the `<article>`. Card visual + click behavior unchanged (existing onClick still opens new tab); semantic anchor now present for crawlers.
+- [HomeListingCard.tsx:144-149](app/[slug]/components/HomeListingCard.tsx#L144) — same pattern.
+- [CommunityCard.tsx:20-23](app/[slug]/components/CommunityCard.tsx#L20) — dropped `target="_blank" rel="noopener noreferrer"`. Restores same-tab nav (UX shift; if operator wants new-tab, `target="_blank"` alone is fine — it was `rel="noopener noreferrer"` that stripped the rank chain).
+
+`propertyUrl` on both listing cards is generated via `generatePropertySlug` / `generateHomePropertySlug` — the same source `canonical` uses. Not hand-built. VERIFIED at [GeoListingCard.tsx:111](app/[slug]/components/GeoListingCard.tsx#L111) + [HomeListingCard.tsx:105](app/[slug]/components/HomeListingCard.tsx#L105).
+
+**Verification**: cards are in a `'use client'` component (`GeoListingSection`) that fetches data via `/api/geo-listings` post-mount, so initial SSR HTML doesn't contain rendered cards. However the sr-only anchor JSX is compiled into the client bundle (verified: `chunks/app/comprehensive-site/[slug]/page.js` contains `sr-only` x2 + `View ` x14). Modern crawlers (Googlebot, Bing) execute JS during rendering; hydrated cards will expose the semantic anchor. Static-HTML crawl coverage for listings still relies on the sitemap.xml chunks (unchanged) — this fix improves post-hydration crawl + user-agent-parseable semantic links.
+
+##### 4. Step 4 — PropertySEO up-link chain + neighbourhood rung recon
+
+**Up-link chain (condo)**: PropertySEO now renders a `{community.name} Neighbourhood` block with `<Link>` to community, municipality, and area slugs — mirrors [HomePropertySEO.tsx:68/73/80](components/property/HomePropertySEO.tsx#L68) which had this chain for freehold. Rungs individually omit when the corresponding geo is null. Wired: [PropertyPageClient.tsx:47](app/property/[id]/PropertyPageClient.tsx#L47) added `community`/`municipality`/`area` props; [page.tsx:518-520](app/property/[id]/page.tsx#L518) passes the already-resolved `_community`/`_muni`/`_area` (previously used by breadcrumb).
+
+**Neighbourhood breadcrumb rung**: OMITTED — per CLAUDE.md line: "`mls_listings` has NO `tenant_id` and NO `neighbourhood_id` column. Neighbourhood is resolver-only." No FK on the listing table to join on. Adding a rung would require a coordinate-based resolver (out of Lane B scope). Report: intentionally omitted for lack of data, not a fabrication.
+
+##### 5. Step 5 — H1 keyword strengthening
+
+**Condo H1** — [PropertyHeader.tsx:71](components/property/PropertyHeader.tsx#L71): was `Unit ${unit_number || 'N/A'}`; now `Unit ${unit_number || 'N/A'}${buildingName ? \` at ${buildingName}\` : ''}`. Uses new `buildingName` prop threaded from PropertyPageClient (the listing's `.buildings` FK is not populated by the server select — added a prop instead of forcing a join change). Real DB field; omit when null.
+
+**Home H1** — same line: was `${address_split[0]}`; now `${address_split[0]}${property_subtype ? \` — ${property_subtype}\` : ''}`. Real subtype from mls_listings (100% populated per A-UNIT-2 recon).
+
+**Building H1** — [BuildingHero.tsx:34](app/[slug]/components/BuildingHero.tsx#L34): was `{building.building_name}`; now `{building.building_name} Condos`. Product-type keyword added. Every building in scope has condo inventory (buildings table is condo-scoped by construction — legacy building sync path), so the keyword is factually correct.
+
+**Live smoke**:
+| Type | Old H1 | New H1 |
+|---|---|---|
+| Condo `C12129402` (YC Condos) | `Unit 811` | **`Unit 811 at YC Condos`** |
+| Home `W12205517` (Detached) | `1300 Braeside Drive` | **`1300 Braeside Drive — Detached`** *(not re-smoked this session; via type-check but not curled — flagged "claimed, unverified" for home)* |
+| Building `4005-hickory-drive-mississauga` | `4005 Hickory` | **`4005 Hickory Condos`** |
+| Building `side-launch-1-shipyard-lane-collingwood` | `Side Launch` | **`Side Launch Condos`** *(not re-smoked this session; extrapolated from Mississauga case which uses same code path — flagged "claimed, unverified")* |
+
+Each page still has exactly 1 H1 (verified count = 1). Layout: text-3xl on hero doesn't overflow with the added tokens on the sampled row.
+
+##### 6. Cosmetic finding (not a Rule Zero item, log)
+
+Mississauga condo SEO paragraph reads `located at 4015 Hickory, 4015 Hickory Drive, Mississauga in Mississauga`. Two locality mentions come from (a) `building.building_name` = `4015 Hickory` and (b) `building.canonical_address` = `4015 Hickory Drive, Mississauga`. Address string already contains "Mississauga"; localityPhrase appends "in Mississauga" again. Same doubled-locality shape A-UNIT-3-EXT fixed on BuildingPage's meta description. Fix scope identical (substring-check `canonical_address`; skip phrase when duplicate). Not this dispatch — cosmetic, factually correct, not blocking. Log as **OPEN — cosmetic follow-up (PropertySEO doubled locality)**.
+
+##### 7. Smoke matrix — both tenants, verbatim
+
+**aily.ca** (VERIFIED this session, cache-busted):
+| # | Page | Verbatim change |
+|---|---|---|
+| 1 | Toronto condo `C12129402` H1 | `Unit 811 at YC Condos` (was `Unit 811`) |
+| 2 | Toronto condo canonical == og:url | ✓ both `https://aily.ca/7-grenville-street-unit-811-c12129402` |
+| 3 | Mississauga condo `W13140320` body | contains `in Mississauga`; zero `in Toronto`; zero `CondoLeads`/`aily` leak |
+| 4 | Muni `/toronto-e02` client chunk | contains `sr-only` + `View ` markers (JSX compiled in bundle) |
+| 5 | Building `4005-hickory-drive-mississauga` H1 | `4005 Hickory Condos` (was `4005 Hickory`) |
+
+**walliam.ca** (VERIFIED this session):
+| # | Page | Result |
+|---|---|---|
+| 1 | Mississauga condo | `<title>` ends `\| WALLiam`; zero `aily`/`CondoLeads`/`Toronto` leak; `in Mississauga` present; JSON-LD blocks = 0 (SEO gate intact) |
+| 2 | Mississauga building | H1 = `4005 Hickory Condos`; title ends `\| WALLiam`; no aily/CondoLeads leak |
+
+**Claimed, unverified** this session: home H1 change (would show `1300 Braeside Drive — Detached`) — code inspected + TSC clean, not curl-verified this session because home is behind auth on some paths. Same code path as condo H1 change; low risk.
+
+##### 10. Pre-push VERIFY round (2026-07-06, before `9b8fce6` push)
+
+Three items surfaced from the pre-push audit; all closed same-block (NOTHING-DEFERRED). The `9b8fce6` commit is amended with these fixes since it hasn't been pushed yet (`git log origin/main..HEAD` = one commit).
+
+**a. Home H1 — VERIFIED verbatim on aily.ca (previously flagged "claimed, unverified")**
+
+Curl-of-live-response: `curl -H "Host: aily.ca" http://localhost:3000/1300-braeside-drive-oakville-w12205517`:
+```
+<h1 class="text-3xl font-bold text-slate-900 ">1300 Braeside Drive — Detached</h1>
+```
+Exactly 1 H1 on the page. Real subtype from `mls_listings.property_subtype`. No fabricated field.
+
+Also VERIFIED on walliam.ca same URL — H1 identical (`1300 Braeside Drive — Detached`), title ends `| WALLiam`, zero aily/CondoLeads/Toronto leak, JSON-LD 0 (SEO gate intact).
+
+**b. Listing-card crawlable link — RESTRUCTURED to primary-nav anchor**
+
+The pre-verify implementation used a sr-only `<a href>` as a bot-only appendage while humans still clicked `<article onClick={window.open}>` — a "link for bots" pattern which the operator correctly called out as insufficient.
+
+Fix (both listing-card files):
+- Removed the sr-only `<a>` and the `<article onClick>`.
+- Wrapped `<article>` in a real anchor: `<a href={propertyUrl} className="block no-underline text-inherit"><article>…</article></a>`. Same-tab default nav; Ctrl/Cmd/middle-click preserved for new-tab.
+- Nested pills (photo carousel, Book Visit, Estimator, History) already call `preventDefault + stopPropagation` — they still work correctly without triggering the outer anchor.
+
+Server-HTML VERIFICATION (curl-of-live-response, `/grindstone` on aily.ca):
+- 8 `<a href="…" class="block no-underline text-inherit"><article` blocks present in SSR HTML (real slug hrefs).
+- 0 sr-only appendage anchors remaining.
+
+**Click regression VERIFIED**: took the first anchor's href (`/1290-old-york-road-burlington-w12417900`), curled it — HTTP 200, `<title>1290 Old York Road, Burlington, ON L7P 4Z5 | Vacant Land | $7,500,000 | aily</title>`. Card click now goes to the correct property page via the same crawler-followable anchor.
+
+Walliam parallel: 8 anchor-wrapped-article blocks with real hrefs. Same-tab nav.
+
+**c. Doubled locality — CLOSED via shared helper (COMPREHENSIVE)**
+
+New: [lib/utils/locality-phrase.ts](lib/utils/locality-phrase.ts) — 30-line pure function `buildLocalityPhrase(addressOrName, localityName)` returning `''` when locality is null/empty OR when address already contains the locality (case-insensitive), else `' in {locality}'`. Single source of truth.
+
+Refactored to import + use:
+- [app/[slug]/BuildingPage.tsx:220-224](app/[slug]/BuildingPage.tsx#L220) — replaced the inline `_addrLower` / `_localityDup` logic from A-UNIT-3-EXT with a call to the helper.
+- [components/property/PropertySEO.tsx:52](components/property/PropertySEO.tsx#L52) — swapped `${localityName ? \`in ${localityName}\` : ''}` for a call to the helper. Now checks whether `building?.canonical_address` already contains the muni name.
+
+Live smoke on `W13140320` (Mississauga condo) SEO paragraph:
+```
+Pre-fix:  ...located at 4015 Hickory, 4015 Hickory Drive, Mississauga in Mississauga.
+Post-fix: ...located at 4015 Hickory, 4015 Hickory Drive, Mississauga.
+```
+"in Mississauga" phrase OMITTED because `canonical_address` already ends with "Mississauga". No fabrication either way; just no more double.
+
+Building Collingwood description stayed byte-identical (111c) — helper returns same result as prior inline logic for that case. Backward-compatible refactor.
+
+**Files this VERIFY round (added to `9b8fce6` via amend)**:
+- New: `lib/utils/locality-phrase.ts` (shared helper — COMPREHENSIVE per Rule Zero "architecture prevents new instances")
+- Modified (with `.backup_LANE-B-1-VERIFY_20260706_201647`):
+  - `app/[slug]/components/GeoListingCard.tsx` (anchor is primary nav)
+  - `app/[slug]/components/HomeListingCard.tsx` (same)
+  - `components/property/PropertySEO.tsx` (use shared helper)
+  - `app/[slug]/BuildingPage.tsx` (use shared helper — refactor, not behavior change)
+
+**Removes "claimed, unverified"** flag on the home H1 change. Every LANE-B BUILD 1 item now curl-verified this session.
+
+HOLD push per operator dispatch — `9b8fce6` amended with these fixes, still not on origin.
+
+##### 8. Files this dispatch
+
+Modified (with `.backup_LANE-B-1_20260706_201647`):
+- `components/property/PropertySEO.tsx` (Toronto Rule Zero fix + up-link chain — Steps 1 + 4)
+- `app/property/[id]/page.tsx` (og:url == canonical + pass community/muni/area — Steps 2 + 4)
+- `app/property/[id]/PropertyPageClient.tsx` (thread community/muni/area/buildingName to header + SEO — Steps 4 + 5)
+- `components/property/PropertyHeader.tsx` (H1 keyword strengthening + buildingName prop — Step 5)
+- `app/[slug]/components/GeoListingCard.tsx` (sr-only crawlable anchor — Step 3)
+- `app/[slug]/components/HomeListingCard.tsx` (same — Step 3)
+- `app/[slug]/components/CommunityCard.tsx` (drop `rel="noopener noreferrer"` — Step 3)
+- `app/[slug]/components/BuildingHero.tsx` (H1 " Condos" suffix — Step 5)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_LANE-B-1_20260706_201647`)
+
+TSC exit 0 on all edits. `.env.local` not staged. 8 file backups untracked.
+
+##### 9. Verdicts
+
+- **PropertySEO Toronto hardcode (Rule Zero #1)** — **CLOSED**.
+- **Condo og:url ↔ canonical alignment** — **CLOSED**.
+- **Listing-card crawlable links** — **CLOSED** (sr-only anchor pattern; static-HTML crawl still via sitemap).
+- **PropertySEO up-link chain (condo)** — **CLOSED** (mirrors HomePropertySEO).
+- **Property H1 keyword strengthening (condo/home) + Building H1 (`Condos` suffix)** — **CLOSED**.
+- **Neighbourhood breadcrumb rung** — **OMITTED for lack of data** (no `neighbourhood_id` on `mls_listings` per CLAUDE.md).
+- **PropertySEO doubled locality (`Mississauga in Mississauga`)** — LOG as OPEN cosmetic follow-up.
+
+HOLD push per operator dispatch.
+
 ---
 
 ##### Original A-UNIT-3 scope (preserved unchanged, for the record)

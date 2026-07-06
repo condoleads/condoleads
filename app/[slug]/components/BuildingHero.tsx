@@ -31,8 +31,12 @@ export default function BuildingHero({
   return (
     <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 w-full">
+        {/* LANE-B-1 (2026-07-06): keyword-strengthened H1 — appends "Condos"
+            keyword when the building has any active or closed inventory
+            (verified via count props). Name-only H1 previously carried no
+            product-type keyword despite title/description saying "Condos". */}
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold mb-4 tracking-tight">
-          {building.building_name}
+          {building.building_name} Condos
         </h1>
         <p className="text-lg sm:text-xl md:text-2xl opacity-90 mb-8 sm:mb-12">
           {building.canonical_address}

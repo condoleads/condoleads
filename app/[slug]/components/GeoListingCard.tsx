@@ -135,8 +135,15 @@ export default function GeoListingCard({
     <>
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div style={{ animation: 'fadeSlideUp 0.45s ease both', animationDelay: `${index * 55}ms` }}>
+        {/* LANE-B-1-VERIFY (2026-07-06): the card's PRIMARY navigation is now
+            the anchor — clicking the card triggers default anchor behavior
+            (same-tab nav; Ctrl/Cmd/middle-click still opens new tab). This
+            replaces the prior sr-only-appendage + article-onClick(window.open)
+            pattern which was crawler-only, not the human click target.
+            Nested buttons (photo nav, action pills) already call
+            preventDefault + stopPropagation so they don't fire the anchor. */}
+        <a href={propertyUrl} className="block no-underline text-inherit">
         <article
-          onClick={() => window.open(propertyUrl, '_blank')}
           onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
           onMouseEnter={() => { setIsHovered(true); if (!allPhotosLoaded) loadAllPhotos() }}
           onMouseLeave={() => setIsHovered(false)}
@@ -289,6 +296,7 @@ export default function GeoListingCard({
             )}
           </div>
         </article>
+        </a>
       </div>
 
       <RegisterModal

@@ -46,6 +46,12 @@ interface PropertyPageClientProps {
   agent?: any
   building?: any
   development?: { id: string; name: string; slug: string } | null
+  // LANE-B-1 (2026-07-06): geo up-link chain for PropertySEO — resolved
+  // in server page.tsx from listing.community_id / municipality_id / area_id
+  // and passed through. Null when the FK is null or the row is not found.
+  community?: { name: string; slug: string } | null
+  municipality?: { name: string; slug: string } | null
+  area?: { name: string; slug: string } | null
   investmentData?: InvestmentData
   isHero?: boolean
   walliamTenantId?: string | null
@@ -72,6 +78,9 @@ export default function PropertyPageClient({
   agent,
   building,
   development,
+  community = null,
+  municipality = null,
+  area = null,
   investmentData,
   isHero = false,
   walliamTenantId = null,
@@ -114,6 +123,7 @@ export default function PropertyPageClient({
           isSale={isSale}
           shouldBlur={shouldGate}
           buildingId={listing.building_id}
+          buildingName={building?.building_name || null}
           onEstimateClick={() => setShowEstimatorModal(true)}
           onOfferClick={() => setShowOfferModal(true)}
         />
@@ -354,6 +364,9 @@ export default function PropertyPageClient({
         listing={listing}
         building={building}
         development={development}
+        community={community}
+        municipality={municipality}
+        area={area}
         isSale={isSale}
         isClosed={isClosed}
       />

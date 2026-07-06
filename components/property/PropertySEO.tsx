@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { buildLocalityPhrase } from '@/lib/utils/locality-phrase'
 
 interface PropertySEOProps {
   listing: {
@@ -23,20 +24,34 @@ interface PropertySEOProps {
     name: string
     slug: string
   } | null
+  // LANE-B-1 (2026-07-06): real locality + up-link chain, tenant-neutral,
+  // resolved by the parent page from listing.community_id → community →
+  // muni → area. NULL at any hop → the corresponding link/phrase is
+  // OMITTED (Rule Zero: never fabricate "in Toronto" for non-Toronto).
+  community?: { name: string; slug: string } | null
+  municipality?: { name: string; slug: string } | null
+  area?: { name: string; slug: string } | null
   isSale: boolean
   isClosed: boolean
 }
 
-export default function PropertySEO({ listing, building, development, isSale, isClosed }: PropertySEOProps) {
+export default function PropertySEO({ listing, building, development, community, municipality, area, isSale, isClosed }: PropertySEOProps) {
   const unitNumber = listing.unit_number || 'N/A'
-  const beds = listing.bedrooms_total || 0
-  const baths = listing.bathrooms_total_integer || 0
-  const sqft = listing.living_area_range || 'N/A'
+  const beds = listing.bedrooms_total
+  const baths = listing.bathrooms_total_integer
+  const sqft = listing.living_area_range
   const price = isClosed ? (listing.close_price || listing.list_price) : listing.list_price
   const priceFormatted = price ? `$${(price / 1000).toFixed(0)}K` : 'Contact for price'
   const propertyType = listing.property_type || 'Condo'
   const statusText = isClosed ? (isSale ? 'sold' : 'leased') : (isSale ? 'for sale' : 'for lease')
   const address = listing.unparsed_address || building?.canonical_address || ''
+  // LANE-B-1: locality phrase omits when unknown (never "in Toronto" fallback)
+  // LANE-B-1-VERIFY (2026-07-06): use the shared buildLocalityPhrase helper —
+  // skips the phrase when canonical_address already contains the locality
+  // (e.g. "4015 Hickory Drive, Mississauga" + Mississauga → no "in Mississauga"
+  // duplication). Same source of truth as BuildingPage description.
+  const localityName = municipality?.name || null
+  const localityPhrase = buildLocalityPhrase(building?.canonical_address, localityName)
 
   return (
     <section className="py-12 bg-slate-50">
@@ -47,9 +62,11 @@ export default function PropertySEO({ listing, building, development, isSale, is
           </h2>
 
           <p className="text-slate-700 leading-relaxed mb-4">
-            Unit {unitNumber} is a {beds}-bedroom, {baths}-bathroom {propertyType.toLowerCase()} 
-            {sqft !== 'N/A' && ` spanning approximately ${sqft} square feet`}
-            {building && ` located at ${building.building_name}, ${building.canonical_address}`}. 
+            Unit {unitNumber} is a {propertyType.toLowerCase()}
+            {beds != null && beds > 0 ? ` with ${beds} bedroom${beds === 1 ? '' : 's'}` : ''}
+            {baths != null && Number(baths) > 0 ? `, ${baths} bathroom${Number(baths) === 1 ? '' : 's'}` : ''}
+            {sqft ? ` spanning approximately ${sqft} square feet` : ''}
+            {building ? ` located at ${building.building_name}, ${building.canonical_address}` : ''}.
             This unit is currently {statusText} {!isClosed && `at ${priceFormatted}`}
             {isClosed && ` (${statusText} for ${priceFormatted})`}.
           </p>
@@ -61,15 +78,48 @@ export default function PropertySEO({ listing, building, development, isSale, is
                 About {building.building_name}
               </h3>
               <p className="text-slate-700 leading-relaxed mb-4">
-                <Link 
+                <Link
                   href={`/${building.slug}`}
                   className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
                 >
                   {building.building_name}
                 </Link>
-                {' '}is located at {building.canonical_address} in Toronto. 
-                Explore more units {isSale ? 'for sale and rent' : 'available'} in this building, 
+                {' '}is located at {building.canonical_address}{localityPhrase}.
+                Explore more units {isSale ? 'for sale and rent' : 'available'} in this building,
                 view building amenities, transaction history, and market insights.
+              </p>
+            </>
+          )}
+
+          {/* LANE-B-1 (2026-07-06): geo up-link chain — mirrors HomePropertySEO
+              (freehold already had this chain). Each rung emitted only when
+              the resolved geo row exists. */}
+          {community && (
+            <>
+              <h3 className="text-xl font-semibold text-slate-900 mt-8 mb-4">
+                {community.name} Neighbourhood
+              </h3>
+              <p className="text-slate-700 leading-relaxed mb-4">
+                This unit is located in{' '}
+                <Link href={`/${community.slug}`} className="text-blue-600 hover:text-blue-800 font-medium hover:underline">
+                  {community.name}
+                </Link>
+                {municipality && (
+                  <>, part of{' '}
+                    <Link href={`/${municipality.slug}`} className="text-blue-600 hover:text-blue-800 font-medium hover:underline">
+                      {municipality.name}
+                    </Link>
+                  </>
+                )}
+                {area && (
+                  <> in the{' '}
+                    <Link href={`/${area.slug}`} className="text-blue-600 hover:text-blue-800 font-medium hover:underline">
+                      {area.name}
+                    </Link>
+                    {' '}area
+                  </>
+                )}.
+                Explore more condos {isSale ? 'for sale and rent' : 'available'} in this community.
               </p>
             </>
           )}
@@ -82,36 +132,39 @@ export default function PropertySEO({ listing, building, development, isSale, is
               </h3>
               <p className="text-slate-700 leading-relaxed mb-4">
                 {building?.building_name || 'This building'} is part of the{' '}
-                <Link 
+                <Link
                   href={`/${development.slug}`}
                   className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
                 >
                   {development.name}
                 </Link>
-                {' '}development. Explore all buildings and available units within this 
+                {' '}development. Explore all buildings and available units within this
                 prestigious multi-building community.
               </p>
             </>
           )}
 
           <p className="text-slate-700 leading-relaxed">
-            Whether you're looking to buy, sell, or rent at {building?.building_name || address}, 
-            our team of experienced real estate professionals can help you navigate the market 
+            Whether you&apos;re looking to buy, sell, or rent at {building?.building_name || address},
+            our team of experienced real estate professionals can help you navigate the market
             and find the perfect unit to match your needs. Contact us today for a free consultation.
           </p>
 
+          {/* LANE-B-1 (2026-07-06): keyword line uses real locality — omits
+              locality tokens entirely when municipality is null (never "Toronto"
+              fallback). Rule Zero #1. */}
           <div className="mt-8 pt-8 border-t border-slate-300">
             <h3 className="text-lg font-semibold text-slate-900 mb-3">
-              Keywords: Unit {unitNumber} {building?.building_name || ''} Toronto
+              Keywords: Unit {unitNumber}{building ? ` ${building.building_name}` : ''}{localityName ? ` ${localityName}` : ''}
             </h3>
             <p className="text-sm text-slate-600">
-              Unit {unitNumber} {building?.building_name || ''}, 
-              {address} {isSale ? 'for sale' : 'for rent'}, 
-              {beds} bedroom condo Toronto, 
-              {building?.building_name || ''} condos, 
-              {development ? `${development.name} Toronto, ` : ''}
-              Toronto {propertyType.toLowerCase()} {statusText}, 
-              {building?.canonical_address || ''} real estate
+              Unit {unitNumber}{building ? ` ${building.building_name}` : ''},
+              {address} {isSale ? 'for sale' : 'for rent'}
+              {beds != null && beds > 0 && localityName ? `, ${beds} bedroom ${propertyType.toLowerCase()} ${localityName}` : ''}
+              {building ? `, ${building.building_name} condos` : ''}
+              {development && localityName ? `, ${development.name} ${localityName}` : ''}
+              {localityName ? `, ${localityName} ${propertyType.toLowerCase()} ${statusText}` : ''}
+              {building ? `, ${building.canonical_address} real estate` : ''}
             </p>
           </div>
         </div>

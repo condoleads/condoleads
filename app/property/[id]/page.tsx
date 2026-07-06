@@ -114,7 +114,11 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
     openGraph: {
       title,
       description,
-      url: `https://${host}/property/${params.id}`,
+      // LANE-B-1 (2026-07-06): og:url matches canonical (slug URL when
+      // available, /property/UUID otherwise). Prior emitted the UUID URL
+      // regardless — same page, two URLs in metadata (Google guidance:
+      // og:url and canonical should agree).
+      url: `https://${canonicalDomain}${canonicalPath}`,
       siteName: siteName,
       locale: 'en_CA',
       type: 'website',
@@ -523,6 +527,9 @@ export default async function PropertyPage({ params }: { params: { id: string } 
         agent={isHero ? null : agent}
         building={building}
         development={development}
+        community={_community}
+        municipality={_muni}
+        area={_area}
         investmentData={investmentData}
         isHero={isHero}
         walliamTenantId={tenantId}

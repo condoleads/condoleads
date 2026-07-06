@@ -15,9 +15,12 @@ interface PropertyHeaderProps {
   onEstimateClick?: () => void
   onOfferClick?: () => void
   isHome?: boolean
+  // LANE-B-1 (2026-07-06): building name for H1 keyword strengthening on
+  // condo pages (listing.buildings is not populated by the parent's fetch).
+  buildingName?: string | null
 }
 
-export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick, isHome = false }: PropertyHeaderProps) {
+export default function PropertyHeader({ listing, status, isSale, shouldBlur = false, buildingId, onEstimateClick, onOfferClick, isHome = false, buildingName = null }: PropertyHeaderProps) {
   const [showRegister, setShowRegister] = useState(false)
   // W-PROPERTY-HYDRATION pattern C: defer formatTimeAgo (which reads new Date()
   // at render) to post-mount. First paint renders the absolute close_date; the
@@ -64,8 +67,16 @@ export default function PropertyHeader({ listing, status, isSale, shouldBlur = f
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
           <div className="flex-1">
             <div className="flex flex-wrap items-center gap-3 mb-3">
+              {/* LANE-B-1 (2026-07-06): keyword-strengthened H1 — appends
+                  building name (condo) or subtype (home) when available. Real
+                  DB fields only; omit when null (never fabricate). Condo uses
+                  the buildingName prop (parent-resolved via building.building_name)
+                  because the listing's `.buildings` FK is not populated by the
+                  server select. */}
               <h1 className={`text-3xl font-bold text-slate-900 ${shouldBlur ? 'blur-sm' : ''}`}>
-                {isHome ? (listing.unparsed_address?.split(',')[0]?.trim() || 'Property') : `Unit ${listing.unit_number || 'N/A'}`}
+                {isHome
+                  ? `${listing.unparsed_address?.split(',')[0]?.trim() || 'Property'}${listing.property_subtype ? ` — ${listing.property_subtype}` : ''}`
+                  : `Unit ${listing.unit_number || 'N/A'}${buildingName ? ` at ${buildingName}` : ''}`}
               </h1>
               <StatusBadge
                 status={status}

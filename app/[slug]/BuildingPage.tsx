@@ -116,6 +116,7 @@ import { resolveCanonicalHost } from '@/lib/utils/canonical'
 import { AgentCard } from '@/components/AgentCard'
 import MobileContactBar from '@/components/MobileContactBar'
 import Breadcrumb from '@/components/Breadcrumb'
+import { buildLocalityPhrase } from '@/lib/utils/locality-phrase'
 import ChatWidgetWrapper from '@/components/chat/ChatWidgetWrapper'
 import { createClient, createServerClient } from '@/lib/supabase/server'
 import { getDisplayAgentForBuilding } from '@/lib/utils/agent-detection'
@@ -218,14 +219,11 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 
   // Build dynamic description
   // A-UNIT-3 EXTENSION (2026-07-06): skip the "in <locality>" phrase when
-  // canonical_address already contains the locality name (case-insensitive
-  // substring match). Prior fix emitted "Collingwood in Collingwood" for
-  // Side Launch (address ends with "Collingwood"). Also caps the description
-  // near ~160 chars for Google truncation compliance by dropping the trailing
-  // "View floor plans …" tail when the header + counts already exceed budget.
-  const _addrLower = (building.canonical_address || '').toLowerCase()
-  const _localityDup = localityName && _addrLower.includes(localityName.toLowerCase())
-  const localityPhrase = localityName && !_localityDup ? ` in ${localityName}` : ''
+  // canonical_address already contains the locality name.
+  // LANE-B-1-VERIFY (2026-07-06): extracted the dedup logic to the shared
+  // helper `buildLocalityPhrase` so PropertySEO uses the same source of
+  // truth. Also caps description near ~160 chars for Google's SERP window.
+  const localityPhrase = buildLocalityPhrase(building.canonical_address, localityName)
   let description = `${building.building_name} at ${building.canonical_address}${localityPhrase}. `
   
   if (activeSales.length > 0) {
