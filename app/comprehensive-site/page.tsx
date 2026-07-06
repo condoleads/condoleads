@@ -30,7 +30,9 @@ export async function generateMetadata(): Promise<Metadata> {
     // suffixes the tenant brand — tenant-derived, not hardcoded.
     const title = `GTA Condos & Homes — AI-Powered Search | ${tenant.name}`
     const description = `Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.`
-    const ogTitle = `${tenant.name} - AI Real Estate Assistant`
+    // A-UNIT-3 EXTENSION (2026-07-06): align og:title to the keyword-first
+    // page title. Prior brand-first ogTitle mismatched the rewritten <title>.
+    const ogTitle = title
     const ogDescription = 'Get your personalized real estate plan in minutes.'
 
     // W-MARKETING A-UNIT-1b (2026-07-01): homepage self-canonical.

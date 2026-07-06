@@ -46,13 +46,25 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
     }
   }
   
-  const siteName = agentBranding?.site_title || 'CondoLeads'
+  // A-UNIT-3 EXTENSION (2026-07-06): siteName is tenant-derived — falls
+  // through agent branding → tenant.name → neutral generic string. The prior
+  // hardcoded 'CondoLeads' fallback leaked onto every non-legacy tenant when
+  // agent branding row was empty (verified live on aily.ca where property
+  // titles ended `| CondoLeads`). Rule Zero #1 multi-tenant fix. New tenants
+  // pick up their own brand suffix by row-insert, unchanged.
+  const _tenantForBrand = await getTenantByHost(serverSupabase, host)
+  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
   const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
-  
+
   // Fetch listing data
+  // A-UNIT-3 EXTENSION (2026-07-06): added listing_key to the SELECT — the
+  // metadata canonical uses generatePropertySlug(listing), which returns
+  // `/property/undefined` when listing_key is absent. Prior SELECT omitted
+  // listing_key so every condo listing hit the UUID canonical fallback at
+  // line 97 below. Verified fix restores address-based canonical URLs.
   const { data: listing } = await serverSupabase
     .from('mls_listings')
-    .select('id, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, building_id, unit_number')
+    .select('id, listing_key, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, building_id, unit_number')
     .eq('id', params.id)
     .single()
   

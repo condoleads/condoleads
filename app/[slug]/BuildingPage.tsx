@@ -157,7 +157,11 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     }
   }
   
-  const siteName = agentBranding?.site_title || 'CondoLeads'
+  // A-UNIT-3 EXTENSION (2026-07-06): siteName is tenant-derived — agent
+  // branding → tenant.name → neutral generic. Prior 'CondoLeads' hardcode
+  // leaked onto non-legacy tenants (verified live). Rule Zero #1 fix.
+  const _tenantForBrand = await getTenantByHost(serverSupabase, host)
+  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
   const siteTagline = agentBranding?.site_tagline || 'Toronto Condo Specialist'
   const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
   
@@ -213,7 +217,15 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const maxBed = bedrooms.length > 0 ? Math.max(...bedrooms) : null
 
   // Build dynamic description
-  const localityPhrase = localityName ? ` in ${localityName}` : ''
+  // A-UNIT-3 EXTENSION (2026-07-06): skip the "in <locality>" phrase when
+  // canonical_address already contains the locality name (case-insensitive
+  // substring match). Prior fix emitted "Collingwood in Collingwood" for
+  // Side Launch (address ends with "Collingwood"). Also caps the description
+  // near ~160 chars for Google truncation compliance by dropping the trailing
+  // "View floor plans …" tail when the header + counts already exceed budget.
+  const _addrLower = (building.canonical_address || '').toLowerCase()
+  const _localityDup = localityName && _addrLower.includes(localityName.toLowerCase())
+  const localityPhrase = localityName && !_localityDup ? ` in ${localityName}` : ''
   let description = `${building.building_name} at ${building.canonical_address}${localityPhrase}. `
   
   if (activeSales.length > 0) {
@@ -239,8 +251,17 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   if (building.total_units) {
     description += `${building.total_units} total units. `
   }
-  
-  description += `View floor plans, amenities, market stats, and transaction history.`
+
+  // A-UNIT-3 EXTENSION (2026-07-06): only append the CTA tail when there's
+  // room within ~160 chars (Google SERP truncation). Prior desc reached 194c
+  // for Side Launch. Real content (address + counts + beds + year) stays;
+  // marketing tail is dropped when it would push past the SERP window.
+  const _ctaTail = `View floor plans, amenities, market stats, and transaction history.`
+  if (description.length + _ctaTail.length <= 160) {
+    description += _ctaTail
+  } else {
+    description = description.trimEnd()
+  }
 
  const title = `${building.building_name} Condos - ${building.canonical_address} | ${siteName}`
   return {

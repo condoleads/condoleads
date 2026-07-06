@@ -69,11 +69,14 @@ export async function generateAreaMetadata(area: AreaData) {
       url,
       siteName: brandTenant?.name || undefined,
       type: 'website',
+      // A-UNIT-3 EXTENSION (2026-07-06): og:image via tenant-aware /og.
+      images: [{ url: `https://${canonicalDomain}/og`, width: 1200, height: 630, alt: title }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      images: [`https://${canonicalDomain}/og`],
     },
   }
 }

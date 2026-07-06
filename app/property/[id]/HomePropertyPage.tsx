@@ -38,7 +38,11 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
     }
   }
 
-  const siteName = agentBranding?.site_title || 'CondoLeads'
+  // A-UNIT-3 EXTENSION (2026-07-06): siteName is tenant-derived — agent
+  // branding → tenant.name → neutral generic. Prior 'CondoLeads' hardcode
+  // leaked onto non-legacy tenants (verified live). Rule Zero #1 fix.
+  const _tenantForBrand = await getTenantByHost(serverSupabase, host)
+  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
   const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
 
   const { data: listing } = await serverSupabase

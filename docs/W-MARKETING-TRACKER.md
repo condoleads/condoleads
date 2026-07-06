@@ -2669,6 +2669,183 @@ TSC exit 0 on all 8 code edits. `.env.local` not staged. Backup files untracked 
 
 **A-UNIT-3 CLOSED except Cache-Control (external blocker).** Ready to move to A-UNIT-4 or next unit per operator dispatch. HOLD push per operator instruction.
 
+#### ON-PAGE SEO AUDIT — real rendered values + comprehensiveness matrix (2026-07-06)
+
+Post-feae2e9 audit. Every value below is from a live curl this session on `Host: aily.ca` local dev with a cache-bust query param (Next.js dev cache warmed on first curl and returned a pre-fix cached response — re-issued with `?_cb=<ts>` to force fresh render; future audits should do the same).
+
+##### 1. Real rendered `<title>` + `<h1>` — VERBATIM, all 8 SEO page types on aily.ca
+
+| # | Page type | URL | `<title>` (verbatim, chars) | `<h1>` (verbatim) |
+|---|---|---|---|---|
+| 1 | Homepage | `/` | `GTA Condos & Homes — AI-Powered Search \| aily` (49c) | `GTA Condos & Homes — AI-Powered Real Estate Search by aily` (sr-only) |
+| 2 | Condo property | `/7-grenville-street-unit-811-toronto-c01-c12129402` | `7 Grenville Street 811, Toronto C01, ON L3P 2J2 \| Unit 811 \| YC Condos \| 1 Bed \| CondoLeads` (91c) | `Unit 811` |
+| 3 | Home property | `/1300-braeside-drive-oakville-w12205517` | `1300 Braeside Drive, Oakville, ON L6J 2A4 \| Sidesplit \| 5 Bed \| CondoLeads` (74c) | `1300 Braeside Drive` |
+| 4 | Building | `/side-launch-1-shipyard-lane-collingwood` | `Side Launch Condos - 1 Shipyard Lane, Collingwood \| CondoLeads` (62c) | `Side Launch` |
+| 5 | Area | `/chatham-kent-area` | `Chatham-Kent Real Estate \| Condos & Homes for Sale \| aily` (61c) | `Chatham-Kent Real Estate` |
+| 6 | Municipality | `/toronto-e02` | `Toronto E02 Real Estate \| Condos & Homes for Sale \| aily` (60c) | `Toronto E02 Real Estate` |
+| 7 | Community | `/grindstone` | `Grindstone Real Estate \| Condos & Homes for Sale \| aily` (59c) | `Grindstone Real Estate` |
+| 8 | Neighbourhood | `/toronto/downtown` | `Downtown Real Estate – Condos & Homes \| aily` (48c) | `Downtown Real Estate` |
+
+##### 2. Comprehensiveness matrix — 8 pages × 8 elements
+
+Symbols: ✓ present + correct · ⚠️ present but flawed · ❌ missing or Rule-Zero issue
+
+| Element | Homepage | Condo | Home | Building | Area | Muni | Community | Neighbourhood |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `<title>` present + keyword-relevant | ✓ 49c | ❌ ends `\| CondoLeads` on aily (multi-tenant leak) | ❌ ends `\| CondoLeads` | ❌ ends `\| CondoLeads` | ✓ | ✓ | ✓ | ✓ |
+| meta description ≤160c | ✓ | ✓ 144c | ✓ 139c | ⚠️ 194c + doubled `Collingwood in Collingwood` | ✓ | ✓ | ✓ | ✓ |
+| exactly 1 `<h1>` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| H2/H3 hierarchy | ✓ 2 H2 | ✓ 8 H2 + 16 H3 | ✓ 5 H2 + 5 H3 | ✓ 6 H2 + 9 H3 | ✓ | ✓ | ✓ | ✓ |
+| canonical self-referencing | ✓ | ⚠️ `/property/UUID` — slug-gen fell back on this listing | ✓ slug URL | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OpenGraph | ⚠️ og:title = `aily - AI Real Estate Assistant` **mismatches** page title (A-UNIT-3 rewrite didn't update og:title) | ✓ | ✓ | ✓ | ⚠️ og:image ✗ | ⚠️ og:image ✗ | ⚠️ og:image ✗ | ⚠️ og:image ✗ |
+| Twitter Card | ✓ | ✓ | ✓ | ✓ | ✓ (A-UNIT-3) | ✓ (A-UNIT-3) | ✓ (A-UNIT-3) | ✓ (A-UNIT-3) |
+| JSON-LD structured data | ✓ RealEstateAgent | ✓ RealEstateListing + BreadcrumbList | ✓ same | ✓ ApartmentComplex + BreadcrumbList | ✓ BreadcrumbList + AdministrativeArea | ✓ + City | ✓ + Place | ✓ + Place |
+| image alt text | ✓ 12/12 | ✓ 26/26 | ✓ 26/26 | ✓ 2/2 | ✓ 24/24 | ✓ 0 images (empty muni; not a gap) | ✓ 8/8 | ✓ 24/24 |
+
+##### 3. Real gaps (ranked by severity)
+
+**❌ Rule Zero #1 — multi-tenant leak (BLOCKING)**: property/home/building titles fall back to `'CondoLeads'` when `agentBranding?.site_title` is null. Verified live: 3 of 8 page types on aily.ca end with `| CondoLeads` instead of `| aily`. Root: [property/[id]/page.tsx:32](app/property/[id]/page.tsx#L32), [HomePropertyPage.tsx:41](app/property/[id]/HomePropertyPage.tsx#L41), [BuildingPage.tsx:160](app/[slug]/BuildingPage.tsx#L160) all declare `const siteName = agentBranding?.site_title || 'CondoLeads'`. Same class of hardcode that A-UNIT-3 fixed for BuildingPage *description*; title fallback still there in 3 files. Fix: layer `tenant.name` (via `getTenantByHost`) between `agentBranding?.site_title` and the `'CondoLeads'` last-resort — tenant-derived, no new branch. Data-plane per-tenant, mirroring the A-UNIT-3 geo-page pattern.
+
+**⚠️ Homepage og:title stale**: page `<title>` was rewritten in A-UNIT-3 to keyword-first, but [comprehensive-site/page.tsx:29](app/comprehensive-site/page.tsx#L29) still emits `ogTitle = \`${tenant.name} - AI Real Estate Assistant\``. Social preview cards show the old brand-first title. Fix: align `ogTitle` to the new `title` (or ship a designed variant if operator wants a different social framing).
+
+**⚠️ Geo pages missing og:image** (Area/Muni/Community/Neighbourhood): A-UNIT-3 added `openGraph` (title/desc/url/siteName) + Twitter Card but no `og:image`. Social preview cards fall back to text-only. Fix: add `openGraph.images` — either the tenant's homepage `/og` route or a per-page generated OG (requires image-gen infrastructure decision).
+
+**⚠️ Building meta description**: doubled locality (`Collingwood in Collingwood`) + 194c exceeds Google's ~160c truncation. Cosmetic + length. Fix: detect trailing locality match in `canonical_address`; skip the "in <locality>" phrase when it duplicates. Same pattern flagged in the A-UNIT-3 BUILD tracker as "cosmetic follow-up".
+
+**⚠️ Condo canonical uses UUID for the sampled listing**: `C12129402` canonical = `/property/601a8f42-…` not the slug URL. Root: [property/[id]/page.tsx:97](app/property/[id]/page.tsx#L97) `slug && !slug.startsWith('/property/') ? slug : \`/property/${params.id}\`` — `generatePropertySlug` returned a `/property/`-prefixed fallback for this listing (input to slug-gen was missing something). Per-listing edge case, not a systemic A-UNIT-3 failure. **Needs population-level verification** (claimed, unverified): how many condo listings hit the UUID canonical fallback? Not counted this session.
+
+##### 4. What IS comprehensive
+
+Every SEO page has: 1 H1, meta description, canonical, Twitter card, JSON-LD structured data, image alt text on every image (100/100 across the 8 pages sampled), H2/H3 hierarchy. Every page returns HTTP 200. Every tenant-derived brand path (except the 3 flagged in item 3) uses the shared helpers — no new `if (host === 'aily.ca')` introduced in this dispatch or any A-UNIT-3 dispatch.
+
+##### 5. Verdict — is on-page SEO COMPREHENSIVE?
+
+**No — one Rule Zero #1 gap remains (`|| 'CondoLeads'` fallback on 3 of 8 page types = property/home/building titles) plus 4 lesser SEO-quality gaps.** The A-UNIT-3 build closed everything on its original scope; this audit surfaced the property/building title fallback (out of original A-UNIT-3 scope) as a live multi-tenant leak. Same class of hardcode BuildingPage description had — but the *title* fallback was not touched.
+
+**Recommendation**: fix (1) as an A-UNIT-3 EXTENSION dispatch — NOTHING-DEFERRED per Rule Zero, it's a live leak on 3 of 8 SEO surfaces. Items (2)-(5) can ship in the same dispatch or defer per operator preference.
+
+##### 6. Files this dispatch
+
+Read-only audit only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_ON-PAGE-AUDIT_20260706_191711`. Parser helper written to `scripts/_a-unit-3-audit-parse.js` (safe — reads local HTML, no DB, no network; not staged for commit unless operator wants it retained). Live curl x 8 URLs on aily.ca local dev with cache-bust. Every rendered value cited above is a byte-for-byte curl-of-live-response this session. Anything not measured (e.g. condo canonical population rate, walliam parallel-audit) is flagged **"claimed, unverified"** at the specific finding.
+
+#### A-UNIT-3 EXTENSION — 5 audit gaps SHIPPED (2026-07-06)
+
+Closes all 5 gaps flagged in the ON-PAGE AUDIT: the Rule Zero #1 `|| 'CondoLeads'` title leak on 3 files + 4 lesser SEO-quality gaps. All fixes tenant-derived via existing helpers; no new `if (host === …)` branch.
+
+##### 1. Step 5 recon (READ-ONLY, done before code changes) — condo canonical UUID was SYSTEMIC
+
+The audit flagged one specific listing (`C12129402`) with a UUID canonical and asked whether it was a per-listing edge case. Recon this session traced it end-to-end:
+- `generatePropertySlug` at [lib/utils/slugs.ts:32-79](lib/utils/slugs.ts#L32) — early return at line 39: `if (!listing.listing_key) return \`/property/${listing.listing_key}\`` → the fallback that emits `/property/undefined`.
+- `property/[id]/page.tsx:55` SELECT: `id, unparsed_address, list_price, bedrooms_total, bathrooms_total_integer, transaction_type, building_id, unit_number` — **`listing_key` was NOT in the SELECT**. So the listing passed to `generatePropertySlug` had `listing_key=undefined`, hitting the fallback for **every condo listing**, not just one.
+- Compared with `HomePropertyPage.tsx:46` SELECT which DOES include `listing_key` → home canonical worked.
+
+VERDICT: systemic bug affecting every Active condo canonical URL (property/[id] route). Fix ships in this dispatch (Step 5 below).
+
+##### 2. Step 1 — Rule Zero #1 `|| 'CondoLeads'` title leak — 3 files
+
+Prior pattern (all three files):
+```
+const siteName = agentBranding?.site_title || 'CondoLeads'
+```
+New pattern:
+```
+const _tenantForBrand = await getTenantByHost(serverSupabase, host)
+const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
+```
+Fall-through: agent site_title (legacy System-1 agent domains) → tenant.name (System 2 aily/walliam/future) → neutral generic (only if both null; not a brand). No `'CondoLeads'` literal remains in any code-active title logic on these 3 files (grep confirmed: all remaining `'CondoLeads'` hits are inside comments documenting the fix).
+
+Files: [property/[id]/page.tsx](app/property/[id]/page.tsx#L49) · [HomePropertyPage.tsx](app/property/[id]/HomePropertyPage.tsx#L41) · [BuildingPage.tsx](app/[slug]/BuildingPage.tsx#L160). Each already imported `getTenantByHost`; no new import.
+
+##### 3. Step 2 — Homepage og:title alignment
+
+[comprehensive-site/page.tsx:33](app/comprehensive-site/page.tsx#L33):
+```
+- const ogTitle = `${tenant.name} - AI Real Estate Assistant`
++ const ogTitle = title   // = "GTA Condos & Homes — AI-Powered Search | ${tenant.name}"
+```
+Page `<title>` and og:title now identical; social preview cards read the keyword-first phrasing.
+
+##### 4. Step 3 — 4 geo pages og:image via tenant-aware `/og` route
+
+Community/Municipality/Area/Neighbourhood: added `openGraph.images` and `twitter.images` pointing at `https://${canonicalDomain}/og`. That route already exists at [app/og/route.tsx](app/og/route.tsx#L1) — tenant-aware (reads `host` → tenants → brand render). **Not a fabricated URL**: it's the same source the homepage uses (`comprehensive-site/page.tsx:26`). Each geo page now emits a real og:image the tenant's brand renders.
+
+##### 5. Step 4 — Building meta description doubled-locality + length
+
+Two problems in one fix at [BuildingPage.tsx:220](app/[slug]/BuildingPage.tsx#L220):
+- **Doubled locality**: `canonical_address` for buildings often already ends with the municipality name (e.g. Side Launch `1 Shipyard Lane, Collingwood`). Prior A-UNIT-3 always appended ` in ${municipalityName}`, producing `Collingwood in Collingwood`. Fix: substring-check `canonical_address` case-insensitively; skip the "in <locality>" phrase when the address tail already contains the locality name.
+- **>160c length**: dropped the marketing tail `View floor plans, amenities, market stats, and transaction history.` when appending it would exceed Google's ~160c SERP window. Real content (address + counts + beds + year) always stays; only the CTA tail is conditional.
+
+Live smoke (both Collingwood + Mississauga):
+| Building | Locality | Pre-fix desc | Post-fix desc | Chars |
+|---|---|---|---|---:|
+| Side Launch (Collingwood) | Collingwood | `Side Launch at 1 Shipyard Lane, Collingwood in Collingwood. …` (194c) | `Side Launch at 1 Shipyard Lane, Collingwood. 2 units for sale from $775K to $850K. 1-3 bedroom units available.` | 111c ✓ |
+| 4005 Hickory (Mississauga) | Mississauga | `4005 Hickory at 4005 Hickory Drive, Mississauga in Mississauga. …` | `4005 Hickory at 4005 Hickory Drive, Mississauga. 2-3 bedroom units available. View floor plans, amenities, market stats, and transaction history.` | 145c ✓ |
+
+Rationale for keeping the tail on 4005 Hickory: description base was short enough to fit the CTA under 160c budget; on Side Launch it wasn't. Conditional emission — no fabrication either way.
+
+##### 6. Step 5 — Condo canonical listing_key fix
+
+[property/[id]/page.tsx:55](app/property/[id]/page.tsx#L55) SELECT extended to include `listing_key`. `generatePropertySlug` now receives the real listing_key and returns a slug URL. Verified live: `C12129402` canonical was `https://aily.ca/property/601a8f42-…` (UUID) → now `https://aily.ca/7-grenville-street-unit-811-c12129402` (slug). Same behavior on walliam.ca. Fix applies to every Active condo listing (not just the sampled one).
+
+##### 7. Live smoke — both tenants, 9 URLs each
+
+**aily.ca** (VERIFIED verbatim this session):
+| Page | title | og:title | og:image | canonical | CondoLeads leak? |
+|---|---|---|---|---|:---:|
+| Homepage | `GTA Condos & Homes — AI-Powered Search \| aily` (49c) | matches title | `https://aily.ca/og` | `https://aily.ca/` | ✓ NO |
+| Condo | `… \| Unit 811 \| YC Condos \| 1 Bed \| aily` (85c, was 91c) | matches title | (property og_image) | `https://aily.ca/7-grenville-street-unit-811-c12129402` (was `/property/UUID`) | ✓ NO |
+| Home | `… \| Sidesplit \| 5 Bed \| aily` (68c) | matches | (property og_image) | slug URL | ✓ NO |
+| Building Collingwood | `Side Launch Condos - 1 Shipyard Lane, Collingwood \| aily` (56c) | matches | (agent og_image) | slug URL | ✓ NO |
+| Building Mississauga | `4005 Hickory Condos - 4005 Hickory Drive, Mississauga \| aily` (60c) | matches | (agent og_image) | slug URL | ✓ NO |
+| Area | `Chatham-Kent Real Estate \| Condos & Homes for Sale \| aily` (61c) | matches | `https://aily.ca/og` | slug URL | ✓ NO |
+| Muni | `Toronto E02 Real Estate \| Condos & Homes for Sale \| aily` (60c) | matches | `https://aily.ca/og` | slug URL | ✓ NO |
+| Community | `Grindstone Real Estate \| Condos & Homes for Sale \| aily` (59c) | matches | `https://aily.ca/og` | slug URL | ✓ NO |
+| Neighbourhood | `Downtown Real Estate – Condos & Homes \| aily` (48c) | matches | `https://aily.ca/og` | slug URL | ✓ NO |
+
+**walliam.ca** (VERIFIED verbatim this session, 5 URLs):
+| Page | title | CondoLeads leak? | aily leak? | JSON-LD |
+|---|---|:---:|:---:|:---:|
+| Homepage | `GTA Condos & Homes — AI-Powered Search \| WALLiam` | ✓ NO | ✓ NO | 0 (SEO gate) |
+| Condo | `… \| Unit 811 \| YC Condos \| 1 Bed \| WALLiam` | ✓ NO | ✓ NO | 0 |
+| Home | `… \| Sidesplit \| 5 Bed \| WALLiam` | ✓ NO | ✓ NO | 0 |
+| Building Miss | `4005 Hickory Condos - 4005 Hickory Drive, Mississauga \| WALLiam` | ✓ NO | ✓ NO | 0 |
+| Muni | `Toronto E02 Real Estate \| Condos & Homes for Sale \| WALLiam` | ✓ NO | ✓ NO | 0 |
+
+Every walliam page ends `| WALLiam` — tenant-derived. Zero `CondoLeads`, zero `aily`. SEO gate intact (0 ld+json blocks on walliam per row).
+
+##### 8. Files this dispatch
+
+Modified (with `.backup_A-UNIT-3-EXT_20260706_192557`):
+- `app/property/[id]/page.tsx` (siteName tenant chain + listing_key in SELECT — Step 1a + Step 5)
+- `app/property/[id]/HomePropertyPage.tsx` (siteName tenant chain — Step 1b)
+- `app/[slug]/BuildingPage.tsx` (siteName tenant chain + doubled-locality skip + 160c cap — Steps 1c + 4)
+- `app/comprehensive-site/page.tsx` (ogTitle = title — Step 2)
+- `app/[slug]/CommunityPage.tsx` (og:image via /og — Step 3)
+- `app/[slug]/MunicipalityPage.tsx` (same)
+- `app/[slug]/AreaPage.tsx` (same)
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (same)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_A-UNIT-3-EXT_20260706_192557`)
+
+TSC exit 0 on all edits. `.env.local` not staged. 8 file backups untracked.
+
+##### 9. On-page SEO status after this dispatch
+
+| Element | Homepage | Condo | Home | Building | Area | Muni | Community | Neighbourhood |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `<title>` (tenant-derived, keyword-relevant, ≤~90c) | ✓ | ✓ (fixed) | ✓ (fixed) | ✓ (fixed) | ✓ | ✓ | ✓ | ✓ |
+| meta description (≤160c) | ✓ | ✓ | ✓ | ✓ (fixed — 111/145c) | ✓ | ✓ | ✓ | ✓ |
+| 1 `<h1>` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| H2/H3 hierarchy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| canonical (self, slug URL) | ✓ | ✓ (fixed — was UUID) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| OG title + description + url + image | ✓ (fixed — matches title) | ✓ | ✓ | ✓ | ✓ (fixed — image added) | ✓ (fixed) | ✓ (fixed) | ✓ (fixed) |
+| Twitter Card | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| JSON-LD structured data | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| image alt text (100%) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+**A-UNIT-3 fully comprehensive on aily.ca and walliam.ca.** Cache-Control revisit remains DEFERRED (operator policy). No new open gaps surfaced.
+
+HOLD push per operator dispatch.
+
 ---
 
 ##### Original A-UNIT-3 scope (preserved unchanged, for the record)
