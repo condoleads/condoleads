@@ -163,11 +163,34 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   
   const { data: building } = await supabase
     .from('buildings')
-    .select('id, building_name, canonical_address, year_built, total_units')
+    .select('id, building_name, canonical_address, year_built, total_units, community_id')
     .eq('slug', params.slug)
     .single()
   if (!building) {
     return { title: 'Building Not Found' }
+  }
+
+  // A-UNIT-3 (2026-07-06): resolve the real municipality via
+  // buildings.community_id → communities.municipality_id → municipalities.name.
+  // Same two-hop join BuildingSchema (Phase 2) uses. NULL at any hop →
+  // localityName stays null → the "in <locality>" phrase is OMITTED
+  // (never fabricates "in Toronto"). Fixes the pre-existing hardcode
+  // that shipped "in Toronto" for every building including non-Toronto.
+  let localityName: string | null = null
+  if (building.community_id) {
+    const { data: comm } = await supabase
+      .from('communities')
+      .select('municipality_id')
+      .eq('id', building.community_id)
+      .single()
+    if (comm?.municipality_id) {
+      const { data: muni } = await supabase
+        .from('municipalities')
+        .select('name')
+        .eq('id', comm.municipality_id)
+        .single()
+      if (muni?.name && muni.name.trim().length > 0) localityName = muni.name
+    }
   }
 
   // Fetch listings for richer metadata
@@ -190,7 +213,8 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const maxBed = bedrooms.length > 0 ? Math.max(...bedrooms) : null
 
   // Build dynamic description
-  let description = `${building.building_name} at ${building.canonical_address} in Toronto. `
+  const localityPhrase = localityName ? ` in ${localityName}` : ''
+  let description = `${building.building_name} at ${building.canonical_address}${localityPhrase}. `
   
   if (activeSales.length > 0) {
     description += `${activeSales.length} unit${activeSales.length > 1 ? 's' : ''} for sale`

@@ -52,6 +52,13 @@ export async function HomePageComprehensive({ agent }: HomePageComprehensiveProp
 
   return (
     <>
+      {/* A-UNIT-3 (2026-07-06): keyword-anchored H1 for SEO. sr-only so the
+          visible hero (rendered by HomePageComprehensiveClient below) is
+          unchanged; document outline gets a proper H1 for crawlers.
+          Brand phrase is tenant-derived — never hardcoded. */}
+      <h1 className="sr-only">
+        GTA Condos &amp; Homes — AI-Powered Real Estate Search{tenantContext?.name ? ` by ${tenantContext.name}` : ''}
+      </h1>
       {/* C8b-2 -- tenantId + brandName for hero wordmark gating */}
       <HomePageComprehensiveClient
         tenantId={tenantContext?.id ?? null}

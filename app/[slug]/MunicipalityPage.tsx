@@ -39,13 +39,35 @@ export async function generateMunicipalityMetadata(municipality: MunicipalityDat
   // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per
   // UNIT 61 R2). Uses shared resolver — fallback is raw request host
   // (self-canonical, never a different domain).
+  // A-UNIT-3 (2026-07-06): brand suffix + openGraph + Twitter card,
+  // tenant-derived.
   const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
+  const { headers } = await import('next/headers')
+  const { createClient } = await import('@/lib/supabase/server')
   const canonicalDomain = await resolveCanonicalHost()
+  const brandTenant = await getTenantByHost(createClient(), headers().get('host') || '')
+  const brandSuffix = brandTenant?.name ? ` | ${brandTenant.name}` : ''
+  const title = `${municipality.name} Real Estate | Condos & Homes for Sale${brandSuffix}`
+  const description = `Browse condos and homes for sale in ${municipality.name}. Explore communities, condo buildings, and market intelligence.`
+  const url = `https://${canonicalDomain}/${municipality.slug}`
   return {
-    title: `${municipality.name} Real Estate | Condos & Homes for Sale`,
-    description: `Browse condos and homes for sale in ${municipality.name}. Explore communities, condo buildings, and market intelligence.`,
+    title,
+    description,
     alternates: {
-      canonical: `https://${canonicalDomain}/${municipality.slug}`,
+      canonical: url,
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: brandTenant?.name || undefined,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
     },
   }
 }

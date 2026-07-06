@@ -35,17 +35,33 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!n) return { title: 'Neighbourhood Not Found' }
   // W-MARKETING A-UNIT-1b (2026-07-01): tenant-aware title (was hardcoded
   // "CondoLeads") + self-canonical (was absent). Reuses shared resolver.
+  // A-UNIT-3 (2026-07-06): openGraph + Twitter card, tenant-derived.
   const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
   const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
   const { headers } = await import('next/headers')
   const canonicalDomain = await resolveCanonicalHost()
   const brandTenant = await getTenantByHost(supabase, headers().get('host') || '')
   const brandName = brandTenant?.name || 'CondoLeads'
+  const title = `${n.name} Real Estate – Condos & Homes | ${brandName}`
+  const description = `Browse condos and homes for sale and lease in ${n.name}, Toronto.`
+  const url = `https://${canonicalDomain}/toronto/${params.neighbourhood}`
   return {
-    title: `${n.name} Real Estate – Condos & Homes | ${brandName}`,
-    description: `Browse condos and homes for sale and lease in ${n.name}, Toronto.`,
+    title,
+    description,
     alternates: {
-      canonical: `https://${canonicalDomain}/toronto/${params.neighbourhood}`,
+      canonical: url,
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: brandTenant?.name || undefined,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
     },
   }
 }

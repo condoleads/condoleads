@@ -45,13 +45,35 @@ export async function generateAreaMetadata(area: AreaData) {
   // duplicate-content leak UNIT 56 flagged. Fix: fall back to the SERVING
   // host (never a different domain). Delegated to resolveCanonicalHost
   // so the same fallback rule applies to every page-type canonical.
+  // A-UNIT-3 (2026-07-06): brand suffix + openGraph + Twitter card,
+  // tenant-derived.
   const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
+  const { headers } = await import('next/headers')
+  const { createClient } = await import('@/lib/supabase/server')
   const canonicalDomain = await resolveCanonicalHost()
+  const brandTenant = await getTenantByHost(createClient(), headers().get('host') || '')
+  const brandSuffix = brandTenant?.name ? ` | ${brandTenant.name}` : ''
+  const title = `${area.name} Real Estate | Condos & Homes for Sale${brandSuffix}`
+  const description = `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`
+  const url = `https://${canonicalDomain}/${area.slug}`
   return {
-    title: `${area.name} Real Estate | Condos & Homes for Sale`,
-    description: `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.`,
+    title,
+    description,
     alternates: {
-      canonical: `https://${canonicalDomain}/${area.slug}`,
+      canonical: url,
+    },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: brandTenant?.name || undefined,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
     },
   }
 }

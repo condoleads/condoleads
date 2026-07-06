@@ -2454,7 +2454,224 @@ Read-only verification of the host classification landscape after e3d229f was pu
 
 **Files this dispatch**: read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_HOST-STATE-RECON_20260704_155026`. Recon script left at `scripts/_recon-tenants.js` (safe — `BEGIN READ ONLY`, explicit column allow-lists).
 
-### A-UNIT-3 — On-page basics `[DEV]` — STATUS: **READY**
+### A-UNIT-3 — On-page basics `[DEV]` — STATUS: **RECON DONE 2026-07-06 (scope corrected — 4 of 6 items stale/wrong; 2 verified-real)**
+
+#### A-UNIT-3 RECON — verified current state (2026-07-06)
+
+Push base clean: HEAD == origin/main == `cae9ac0`, 0 ahead this session. Recon done READ-ONLY; no code, no SQL, no commit for the recon itself (tracker append only).
+
+The original A-UNIT-3 scope list (below, unchanged for the historical record) was written before A-UNIT-1b (2026-07-01) shipped several title/tenant fixes. Every claim re-verified this session against code; four of the six items are stale or misdescribed. Real remaining work is narrow; two items are already-shipped, two are already-not-broken, and two are actionable.
+
+##### 1. Item-by-item verification (VERIFIED verbatim this session)
+
+| # | Original scope claim | Verified state (this session) | Action |
+|---|---|---|---|
+| 1 | "H1 on homepage — currently 0 H1 tags" | **CONFIRMED TRUE.** VERBATIM `grep -cE "<h1\|<H1"` on `components/HomePageComprehensive.tsx` = 0 and `components/HomePageComprehensiveV2.tsx` = 0. Homepage renders zero H1 tags. | **BUILD** — add one H1 to the homepage component tree. Keyword-anchored, tenant-name-aware. |
+| 2 | "H1 on property pages — currently 0; affects PropertyPageClient and HomePropertyPage" | **STALE.** VERIFIED: [components/property/PropertyHeader.tsx:67](components/property/PropertyHeader.tsx#L67) already renders `<h1 className="text-3xl font-bold …">{isHome ? address : "Unit N"}</h1>` — mounted by BOTH PropertyPageClient and HomePropertyPageClient. Property pages HAVE an H1 today (address for home, unit-number for condo). | **CLOSED** (no work; verify the H1 text is what the tracker wanted — it renders the *address* first line, which is Google-friendly). |
+| 3 | "Homepage title rewrite — currently 'aily - AI Real Estate Assistant for the GTA' (brand-first)" | **CONFIRMED TRUE.** VERBATIM [app/comprehensive-site/page.tsx:27](app/comprehensive-site/page.tsx#L27): `const title = \`${tenant.name} - AI Real Estate Assistant for the GTA\`` — brand-first, weak for non-branded queries (e.g. "GTA condos"). | **BUILD** — rewrite to keyword-anchored + brand-suffix pattern. Tenant-derived (never hardcode "aily" — build for aily/walliam/any tenant via `tenant.name`). |
+| 4 | "`comprehensive-site/toronto/[neighbourhood]` title — hardcodes 'CondoLeads'" | **STALE.** VERIFIED [app/comprehensive-site/toronto/[neighbourhood]/page.tsx:18,20](app/comprehensive-site/toronto/[neighbourhood]/page.tsx#L18): `const brandName = brandTenant?.name \|\| 'CondoLeads'` — tenant-derived; only the *fallback* is CondoLeads (when brandTenant lookup fails on non-tenant hosts). aily renders `${n.name} Real Estate – Condos & Homes \| aily`. Fixed by A-UNIT-1b on 2026-07-01 (tracker's fix comment at line 12 still there for the record). | **CLOSED** — already shipped. |
+| 5 | "Twitter Card metadata on home / area / muni / community (currently only building + property emit)" | **VERIFIED PARTIAL.** VERBATIM `grep -c "twitter"` per page: homepage (comprehensive-site/page.tsx) = **1** (has Twitter card — closed since tracker was written); property/[id] = 1; HomePropertyPage = 1; BuildingPage = 1; CommunityPage/MunicipalityPage/AreaPage/Neighbourhood = **0 each**. Homepage is done; the 4 geo pages still lack Twitter cards. | **BUILD** — add Twitter card to the 4 geo `generate*Metadata` helpers (Community/Muni/Area/Neighbourhood). Simple: mirror the existing `openGraph:` block on those helpers. |
+| 6 | "Homepage `Cache-Control` revisit — currently `private, no-cache, no-store, max-age=0, must-revalidate`; consider `public, s-maxage=60, stale-while-revalidate=300`" | **NEEDS VERIFICATION at runtime.** VERBATIM `grep -rn "Cache-Control\|cache-control" app/page.tsx app/comprehensive-site/ middleware.ts next.config.js` returned **0 code-side hits**. No explicit Cache-Control set anywhere in the homepage path — the private/no-cache header is the Next.js default when `dynamic='force-dynamic'` + `revalidate=0` (both present at [comprehensive-site/page.tsx:68-69](app/comprehensive-site/page.tsx#L68)). The tracker's quoted header string is "claimed, unverified" without a curl-of-live-response confirmation this session. **Fix scope: only ship if the Cache-Control change is what operator wants — the tradeoff is edge-cache warmth vs freshness of the personalized homepage.** Not build-safe without operator alignment. | **DEFER (operator decision needed)** — this is a policy call, not a fabrication fix. |
+
+##### 2. Title-generation shape per page type (VERIFIED verbatim, tenant-awareness column shows if the title reads tenant identity)
+
+| Page type | File | Title template | Tenant-aware? |
+|---|---|---|---|
+| Homepage | [app/comprehensive-site/page.tsx:27](app/comprehensive-site/page.tsx#L27) | `${tenant.name} - AI Real Estate Assistant for the GTA` | ✅ yes (brand-first — item 3 above) |
+| Property (condo) | [app/property/[id]/page.tsx:85](app/property/[id]/page.tsx#L85) | `${address} \| ${unit} \| ${building_name} \| ${price} \| ${beds} \| ${siteName}` (joined `\|`) | ✅ yes (`siteName = agentBranding?.site_title \|\| 'CondoLeads'`) |
+| Property (home / freehold) | [app/property/[id]/HomePropertyPage.tsx:58](app/property/[id]/HomePropertyPage.tsx#L58) | `${address} \| ${style} \| ${price} \| ${beds} \| ${siteName}` | ✅ yes (same `siteName`) |
+| Building | [app/[slug]/BuildingPage.tsx:221](app/[slug]/BuildingPage.tsx#L221) | `${building.building_name} Condos - ${building.canonical_address} \| ${siteName}` | ✅ yes |
+| Community | [app/[slug]/CommunityPage.tsx:43](app/[slug]/CommunityPage.tsx#L43) | `${community.name} Real Estate \| Condos & Homes for Sale` | ❌ **no brand suffix** — pure geo template |
+| Municipality | [app/[slug]/MunicipalityPage.tsx:45](app/[slug]/MunicipalityPage.tsx#L45) | `${municipality.name} Real Estate \| Condos & Homes for Sale` | ❌ no brand suffix |
+| Area | [app/[slug]/AreaPage.tsx:51](app/[slug]/AreaPage.tsx#L51) | `${area.name} Real Estate \| Condos & Homes for Sale` | ❌ no brand suffix |
+| Neighbourhood | [comprehensive-site/toronto/[neighbourhood]/page.tsx:20](app/comprehensive-site/toronto/[neighbourhood]/page.tsx#L20) | `${n.name} Real Estate – Condos & Homes \| ${brandName}` | ✅ yes (fallback to `'CondoLeads'` if tenant lookup fails) |
+| condoleads.ca root promo | [app/page.tsx:432](app/page.tsx#L432) | `'CondoLeads - Get Your AI-Powered Condo Leads Funnel Today'` | N/A — condoleads.ca IS CondoLeads; middleware rewrites aily/walliam `/` to `/comprehensive-site/` before reaching this file. Correct for its scope. |
+
+**Consistency finding**: 4 of 8 SEO page types (Community, Municipality, Area, and every ‑style non-neighbourhood geo) emit no brand/tenant suffix in the title. Not a Rule Zero violation — the current template is factually correct — but branded search results ("aily site:aily.ca") lose the brand hook there. If the A-UNIT-3 build wants consistent branding, extend those 3 with `\| ${brandName}` derived from the tenant helper (same pattern already used at neighbourhood page). Tenant-derived, not brand-hardcoded.
+
+##### 3. H1 census — VERIFIED verbatim (per SEO page type)
+
+| Page type | H1 source | Current H1 text |
+|---|---|---|
+| Homepage | none | **absent** (item 1 above — real gap) |
+| Property (condo) | [components/property/PropertyHeader.tsx:67](components/property/PropertyHeader.tsx#L67) | `Unit ${listing.unit_number \|\| 'N/A'}` |
+| Property (home) | [components/property/PropertyHeader.tsx:67](components/property/PropertyHeader.tsx#L67) | `${listing.unparsed_address.split(',')[0].trim() \|\| 'Property'}` (street address, city trimmed off) |
+| Building | [app/[slug]/components/BuildingHero.tsx:34](app/[slug]/components/BuildingHero.tsx#L34) | `${building.building_name}` |
+| Community | [app/[slug]/components/GeoHero.tsx:108](app/[slug]/components/GeoHero.tsx#L108) | `${title}` (typically `${community.name} Real Estate`) |
+| Municipality | same GeoHero.tsx:108 | `${municipality.name} Real Estate` |
+| Area | same GeoHero.tsx:108 | `${area.name} Real Estate` |
+| Neighbourhood | same GeoHero.tsx:108 | `${neighbourhood.name} Real Estate` |
+| Development | [app/[slug]/DevelopmentPage.tsx:244](app/[slug]/DevelopmentPage.tsx#L244) | `${development.name}` |
+
+Every SEO page type EXCEPT homepage has exactly one H1. Homepage is the sole H1 gap.
+
+##### 4. Meta description census — VERIFIED verbatim
+
+| Page type | Description | Tenant-aware / content-derived? |
+|---|---|---|
+| Homepage | `Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.` | ✅ tenant-aware |
+| Property (condo) | `${beds} ${baths} condo ${type} at ${address} in ${building.name}. ${price}. View photos, floor plans, and schedule a showing.` | ✅ content-derived |
+| Property (home) | `${beds} ${baths} ${style} ${type} at ${address}. ${price}. View photos, room dimensions, and get a free home estimate.` | ✅ content-derived |
+| Building | `${building_name} at ${canonical_address} in Toronto. …` (see side finding below) | ⚠️ content-derived BUT hardcodes `in Toronto` — see finding |
+| Community | `Browse condos and homes for sale in ${community.name}. View listings, condo buildings, market data, and price estimates.` | ✅ content-derived |
+| Municipality | `Browse condos and homes for sale in ${municipality.name}. Explore communities, condo buildings, and market intelligence.` | ✅ content-derived |
+| Area | `Browse condos and homes for sale in ${area.name}. Explore municipalities, communities, and condo buildings.` | ✅ content-derived |
+| Neighbourhood | `Browse condos and homes for sale and lease in ${n.name}, Toronto.` | ⚠️ hardcodes `Toronto` (fine here — this page-tree IS `/toronto/[neighbourhood]/`, so it is factually always Toronto). |
+
+Every SEO page emits a description. No page is missing this. **Descriptions are largely generic templates** — no live listing counts, no market snippets. Content-quality upgrade is possible (e.g. "127 listings from $450K to $2.4M in ${city}" instead of "Browse condos and homes for sale in ${city}") but not a Rule Zero item — the current strings are factually correct.
+
+##### 5. Side finding — BuildingPage description hardcodes "in Toronto" for every building (RULE ZERO #1 RISK)
+
+VERBATIM [app/[slug]/BuildingPage.tsx:193](app/[slug]/BuildingPage.tsx#L193):
+```
+let description = `${building.building_name} at ${building.canonical_address} in Toronto. `
+```
+Every building emits this — INCLUDING non-Toronto buildings (Mississauga, Oakville, etc.). Rule Zero #1: a Mississauga condo's meta description will read "5750 Tosca Dr at 5750 Tosca Dr, Mississauga in Toronto" — factually wrong. Not caught by A-UNIT-2 (which fixed the same class of hardcode in BuildingSchema `addressLocality`). This is the meta-description mirror of that fix.
+
+**Fix scope** (small): resolve the real municipality name via the same `buildings.community_id → communities.municipality_id → municipalities.name` join that BuildingSchema uses today — pass through the same `locality` prop, or drop `in Toronto` entirely. Not in the original A-UNIT-3 scope but surfaces from this recon; log as **OPEN — A-UNIT-3 side finding** and fix in the A-UNIT-3 build dispatch (identical shape to the BuildingSchema fix already shipped).
+
+##### 6. Real A-UNIT-3 buildable scope (after recon)
+
+Real items (VERIFIED, actionable, no new product decision required):
+1. **Homepage H1** — add one keyword-anchored H1 to `HomePageComprehensive.tsx` / `V2` render tree. Tenant-derived where the brand appears.
+2. **Homepage title rewrite** — pivot from brand-first to keyword-first: `GTA Condos & Homes — AI-Powered Search \| ${tenant.name}` (or operator-preferred variant). Uses existing `tenant.name` at [comprehensive-site/page.tsx:16](app/comprehensive-site/page.tsx#L16), no new resolver.
+3. **Twitter Card on the 4 geo pages** — Community, Municipality, Area, Neighbourhood. Mirror the openGraph block that already exists on Building/Property pages. Small copy-paste per file.
+4. **BuildingPage "in Toronto" hardcode** (side finding — Rule Zero #1 fix) — replace with joined locality name or drop.
+5. *(optional / operator preference)* Add `\| ${brandName}` suffix to Community/Municipality/Area titles for brand consistency. Tenant-derived via existing helper. Not a Rule Zero fix; branded-search hook.
+
+Deferred (needs operator input, not build-safe now):
+- **Homepage `Cache-Control` change** — policy call on edge-cache warmth vs freshness. Operator alignment needed before touching.
+
+Not needed (already shipped or already correct):
+- H1 on property pages (item 2 of original scope)
+- Neighbourhood title CondoLeads hardcode (item 4 of original scope)
+- Homepage Twitter card (subset of item 5)
+
+##### 7. Multi-tenant posture (per CLAUDE.md)
+
+Every actionable A-UNIT-3 item above is scoped as **tenant-derived from existing helpers** — no new brand branches, no `if (host === 'aily.ca')`, no hardcoded tenant identity in build output. Where a brand name appears, it reads from `tenant.name` / `siteName` (via `agentBranding?.site_title`) / the shared `getTenantByHost` resolver. Adding a new tenant is a row-insert, unchanged. Verified this session for every code path listed above.
+
+##### 8. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-3-RECON_20260706_165216`. Every claim above cited by file:line and grep/read output this session; anything not runtime-verified (Cache-Control response header) is flagged **"claimed, unverified"** in item 6. Push base clean before the recon; no HOLD needed.
+
+---
+
+#### A-UNIT-3 BUILD — SHIPPED (2026-07-06)
+
+4 buildable items + 1 side finding delivered in one dispatch. Every touched file has a `.backup_A-UNIT-3_20260706_165648` alongside. TSC exit 0 across all edits.
+
+##### 1. BuildingPage locality Rule Zero #1 fix (side finding surfaced in recon)
+
+[app/[slug]/BuildingPage.tsx](app/[slug]/BuildingPage.tsx): pre-fix line 193 hardcoded `in Toronto` in the meta description for every building. Fix:
+- Extended `building` SELECT to include `community_id` (was already fetched later in the render path; now also in generateMetadata scope).
+- Inline resolve: `buildings.community_id → communities.municipality_id → municipalities.name`. Two supabase reads; each hop null-guarded; any null → `localityName = null`.
+- Description now emits `${building_name} at ${canonical_address}${localityPhrase}.` where `localityPhrase = localityName ? \` in ${localityName}\` : ''`. NULL community_id or any null hop → phrase OMITTED entirely (never `in Toronto`, never `in null`).
+
+Live smoke on aily.ca (both walliam and aily reach the same building data — same fix applies):
+| Building | community_id | Pre-fix desc | Post-fix desc |
+|---|---|---|---|
+| Mississauga (`/4005-hickory-drive-mississauga`) | non-null | `... in Toronto.` | `4005 Hickory at 4005 Hickory Drive, Mississauga in Mississauga. 2-3 bedroom units available. …` |
+| Palace Condos Burlington (`/the-palace-condos-1270-maple-crossing-boulevard-burlington`) | **NULL** | `... in Toronto.` | `The Palace Condos at 1270 Maple Crossing Boulevard, Burlington. 8 units for sale from $480K to $710K. 2 units for rent. …` (locality phrase OMITTED cleanly) |
+
+**Note on the Mississauga case**: `canonical_address` already contains "Mississauga", so the sentence reads `... 4005 Hickory Drive, Mississauga in Mississauga.` — redundant-but-honest. Cleaning up the double-locality is a separate cosmetic follow-up (would require parsing `canonical_address` to strip the trailing locality); NOT a Rule Zero item since both mentions are factually correct. Logged as OPEN cosmetic follow-up.
+
+##### 2. Homepage H1 — added (was 0)
+
+[components/HomePageComprehensive.tsx](components/HomePageComprehensive.tsx) + [components/HomePageComprehensiveV2.tsx](components/HomePageComprehensiveV2.tsx) — both live paths (homepage_layout: v1 uses V1; v2/v3 use V2). Added `<h1 className="sr-only">GTA Condos & Homes — AI-Powered Real Estate Search{tenantContext?.name ? \` by ${tenantContext.name}\` : ''}</h1>` as the first child of the returned fragment.
+
+Rationale for `sr-only`: the visible hero is a client component (`HomePageComprehensiveClient[V2]`) with its own designed headline; adding a visible H1 above would visually double up. `sr-only` gives the document outline a proper H1 for crawlers without touching the visual design. Standard SEO pattern.
+
+Live smoke (VERIFIED verbatim):
+- aily.ca: `<h1 class="sr-only">GTA Condos &amp; Homes — AI-Powered Real Estate Search by aily</h1>` — 1 H1 tag on page (was 0).
+- walliam.ca: `<h1 class="sr-only">GTA Condos &amp; Homes — AI-Powered Real Estate Search by WALLiam</h1>` — 1 H1, tenant-derived (WALLiam, not aily, not CondoLeads).
+
+Zero brand hardcode. Zero `if (host === 'aily.ca')`.
+
+##### 3. Homepage title — keyword-first pivot
+
+[app/comprehensive-site/page.tsx:31](app/comprehensive-site/page.tsx#L31):
+```
+- const title = `${tenant.name} - AI Real Estate Assistant for the GTA`
++ const title = `GTA Condos & Homes — AI-Powered Search | ${tenant.name}`
+```
+Live smoke:
+- aily: `<title>GTA Condos &amp; Homes — AI-Powered Search | aily</title>`.
+- walliam: `<title>GTA Condos &amp; Homes — AI-Powered Search | WALLiam</title>`.
+
+##### 4. Twitter Card + openGraph on 4 geo pages
+
+Community/Municipality/Area helpers previously had `title + description + alternates.canonical` only (0 openGraph, 0 Twitter). Neighbourhood had those plus tenant-derived title. All 4 now emit matching `openGraph` (title, description, url, siteName, type=website) + `twitter` (card=summary_large_image, title, description). Tenant lookup via `getTenantByHost` (same helper Neighbourhood already used).
+
+Live smoke, aily.ca (VERIFIED verbatim, one URL per page type):
+| Page type | URL | `<title>` | `og:title` count | `twitter:card` |
+|---|---|---|---:|---:|
+| Community | `/grindstone` | `Grindstone Real Estate | Condos & Homes for Sale | aily` | 1 | 1 |
+| Municipality | `/toronto-e02` | `Toronto E02 Real Estate | Condos & Homes for Sale | aily` | 1 | 1 |
+| Area | `/chatham-kent-area` | `Chatham-Kent Real Estate | Condos & Homes for Sale | aily` | 1 | 1 |
+| Neighbourhood | `/toronto/downtown` | `Downtown Real Estate – Condos & Homes | aily` | 1 | 1 |
+
+walliam.ca `/toronto-e02` → `<title>Toronto E02 Real Estate | Condos & Homes for Sale | WALLiam</title>` — brand suffix tenant-derived. No aily/CondoLeads leak.
+
+##### 5. Brand suffix on Community/Muni/Area titles (Step 5, non-Rule-Zero)
+
+Shipped along with the Twitter Card change in the same file edit — same tenant helper (`getTenantByHost`) already required for the Twitter Card work, no additional plumbing. Marked as done in this dispatch.
+
+##### 6. Verified NOT-touched (already-shipped items from recon)
+
+- **Property page H1** — VERIFIED present via `PropertyHeader.tsx:67` (unit-number for condo, address for home). Not touched.
+- **Neighbourhood title CondoLeads hardcode** — VERIFIED already tenant-derived (A-UNIT-1b, 2026-07-01). Not touched.
+- **Homepage Twitter Card** — VERIFIED already emitted at `comprehensive-site/page.tsx:49-54`. Not touched.
+
+##### 7. Cache-Control revisit — DEFERRED
+
+Per recon: no code-side Cache-Control set anywhere in the homepage path; tracker's quoted header string is Next.js default from `dynamic='force-dynamic'` + `revalidate=0`. Any change is a policy call (edge-cache warmth vs freshness of personalized homepage). **Deferred pending operator decision** — external blocker, resume when operator picks the desired posture. Not build-safe now.
+
+##### 8. Multi-tenant posture
+
+Every code path touched in this dispatch reads brand identity from the shared tenant resolver (`getTenantByHost` or the already-in-scope `tenant.name` / `tenantContext.name`). Zero hardcoded tenant literals, zero `if (host === 'aily.ca')`. Verified via grep of the modified files: no `host ===` conditionals introduced.
+
+Onboarding a new tenant (row-insert into `tenants`) picks up:
+- Homepage H1 with the new tenant.name via `tenantContext.name`.
+- Homepage title with `${tenant.name}` suffix.
+- 4 geo pages with `${brandTenant.name}` suffix + tenant-attributed Twitter/OG.
+- Building pages with real municipality (data-plane join, no per-tenant branch).
+
+All by row-insert alone; no code change.
+
+##### 9. Files this dispatch
+
+Modified (with `.backup_A-UNIT-3_20260706_165648`):
+- `app/[slug]/BuildingPage.tsx` (locality resolve + description conditional)
+- `components/HomePageComprehensive.tsx` (H1 tenant-derived, sr-only)
+- `components/HomePageComprehensiveV2.tsx` (same)
+- `app/comprehensive-site/page.tsx` (keyword-first title)
+- `app/[slug]/CommunityPage.tsx` (tenant lookup + brand suffix + openGraph + Twitter)
+- `app/[slug]/MunicipalityPage.tsx` (same)
+- `app/[slug]/AreaPage.tsx` (same)
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (openGraph + Twitter — brand suffix already done)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_A-UNIT-3-BUILD_20260706_165648`)
+
+TSC exit 0 on all 8 code edits. `.env.local` not staged. Backup files untracked (deliberate).
+
+##### 10. A-UNIT-3 status
+
+| Original scope item | State |
+|---|---|
+| Homepage H1 | ✅ SHIPPED |
+| Property H1 | ✅ Already-shipped (A-UNIT-1b or earlier) — no action |
+| Homepage title | ✅ SHIPPED (keyword-first) |
+| Neighbourhood CondoLeads title | ✅ Already-shipped (A-UNIT-1b) — no action |
+| Twitter Card (home + 4 geo) | ✅ Homepage already-shipped; 4 geo pages SHIPPED this dispatch |
+| Homepage Cache-Control | ⏸ DEFERRED (operator policy) |
+| BuildingPage "in Toronto" (side finding) | ✅ SHIPPED (Rule Zero #1 fix) |
+| Brand suffix on 3 geo titles (optional) | ✅ SHIPPED |
+
+**A-UNIT-3 CLOSED except Cache-Control (external blocker).** Ready to move to A-UNIT-4 or next unit per operator dispatch. HOLD push per operator instruction.
+
+---
+
+##### Original A-UNIT-3 scope (preserved unchanged, for the record)
 
   - **H1 on homepage** (keyword + brand anchor; currently 0 H1
     tags per UNIT 61 R7) — e.g. "AI-Powered GTA Real Estate

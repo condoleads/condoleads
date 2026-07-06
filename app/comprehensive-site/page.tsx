@@ -24,7 +24,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
     const url = `https://${tenant.domain}`
     const ogImageUrl = `${url}/og`
-    const title = `${tenant.name} - AI Real Estate Assistant for the GTA`
+    // A-UNIT-3 (2026-07-06): keyword-first title. Prior brand-first shape
+    // ("${tenant.name} - AI Real Estate Assistant for the GTA") was weak for
+    // non-branded queries. Now leads with the primary keyword phrase and
+    // suffixes the tenant brand — tenant-derived, not hardcoded.
+    const title = `GTA Condos & Homes — AI-Powered Search | ${tenant.name}`
     const description = `Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by ${tenant.name} AI.`
     const ogTitle = `${tenant.name} - AI Real Estate Assistant`
     const ogDescription = 'Get your personalized real estate plan in minutes.'
