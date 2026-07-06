@@ -2008,6 +2008,76 @@ No SQL write. No new file. `.env.local` remains git-ignored — not staged. Back
 
 HOLD push per operator dispatch.
 
+#### A-UNIT-2 SUBTYPE REFERENCE — durable list (2026-07-06, BMZDISK)
+
+Consolidated reference so future work can find the current subtype scope without re-deriving it from code. Everything here is VERIFIED this session against the DB + code + commit history; anything unverified is flagged inline.
+
+##### 1. Render scope (freehold) — 19 subtypes, shipped by `64cfc6a`
+
+`RESIDENTIAL_TYPES` at [app/property/[id]/HomePropertyPage.tsx:16](app/property/[id]/HomePropertyPage.tsx#L16) — the source of truth for the render gate. **Verbatim, 19 entries**:
+```
+'Detached', 'Semi-Detached', 'Att/Row/Townhouse', 'Link',
+'Duplex', 'Triplex', 'Fourplex', 'Multiplex',
+'Modular Home', 'Upper Level', 'Lower Level', 'Room', 'Shared Room',
+'Rural Residential', 'MobileTrailer',
+'Farm', 'Store W Apt/Office', 'Other', 'Vacant Land',
+```
+
+Mirrored byte-exact in 4 sibling constants (all VERIFIED aligned):
+- [app/api/geo-listings/route.ts:7](app/api/geo-listings/route.ts#L7) — Postgres `.in()` for propertyCategory='homes'
+- [app/api/neighbourhood-listings/route.ts:14](app/api/neighbourhood-listings/route.ts#L14) — same shape
+- [app/sitemap.xml/route.ts:66](app/sitemap.xml/route.ts#L66) — `HOME_SUBTYPES` for chunk counting
+- `supabase/migrations/20260705_a_unit_2_final_sitemap_rpc_widen.sql` → `public.get_sitemap_listings` RPC (COMMITTED)
+
+**Schema.org `about.@type` mapping** at [ListingSchema.tsx:84](app/property/[id]/components/ListingSchema.tsx#L84) — honest per-subtype:
+| Subtype | @type |
+|---|---|
+| Detached, Rural Residential | SingleFamilyResidence |
+| Semi-Detached, Att/Row/Townhouse, Link, Modular Home, MobileTrailer, Farm | House |
+| Duplex, Triplex, Fourplex, Multiplex | Residence |
+| Upper Level, Lower Level | Apartment |
+| Room, Shared Room | Room |
+| Store W Apt/Office, Other, Vacant Land | Place (non-dwelling) |
+| Commercial (any subtype, via property_type branch) | Place |
+
+##### 2. User-facing filter chips — 19 home + 8 condo, shipped by `67bb717`
+
+`HOME_SUBTYPES` at [app/[slug]/components/GeoAdvancedFilters.tsx:32](app/[slug]/components/GeoAdvancedFilters.tsx#L32) — **19 entries, byte-exact match to `RESIDENTIAL_TYPES`** above.
+
+`CONDO_SUBTYPES` at [app/[slug]/components/GeoAdvancedFilters.tsx:21](app/[slug]/components/GeoAdvancedFilters.tsx#L21) — **8 entries, verbatim**:
+```
+'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment', 'Common Element Condo',
+'Detached Condo', 'Semi-Detached Condo', 'Co-Ownership Apartment', 'Leasehold Condo',
+```
+
+**Deliberately EXCLUDED from CONDO_SUBTYPES** (non-dwelling condo-table tails; VERIFIED distinct DB values Active):
+- `Parking Space` (133), `Locker` (17), `Vacant Land Condo` (124), `Timeshare` (9), `Phased Condo` (1).
+Rationale: chips scope to dwelling-shaped listings a person browses for a home. Non-dwelling amenities are edge searches (a parking space alone) and don't belong in a "condo dwelling filter." No render-side impact — `PropertyPage` (condo route) has no subtype gate, so any condo subtype still renders + emits schema; only the *filter chip* is scoped.
+
+##### 3. Two surfaces, both aligned — precise distinction
+
+| Surface | Commit | What it gates |
+|---|---|---|
+| **Render + schema + API predicate + sitemap** | `64cfc6a` | Which subtypes get a rendered page, emit JSON-LD, appear in unfiltered API results, appear in the sitemap. 19 freehold + all condo dwellings (via no-gate PropertyPage). |
+| **User-facing chip filter** | `67bb717` | Which subtypes a visitor can chip-select from the "Advanced filters" panel on Community / Municipality / Area / Neighbourhood pages. 19 home + 8 condo. |
+
+These are separate surfaces. A subtype can render but not be a chip (was the pre-67bb717 state), or be a chip and not render (never intended — chips would return empty). Post-67bb717, both are aligned.
+
+##### 4. Drift-protection posture
+
+Both filter arrays in `GeoAdvancedFilters.tsx` are **hardcoded literals** tied by a tie-comment (VERIFIED verbatim at [GeoAdvancedFilters.tsx:22-31](app/[slug]/components/GeoAdvancedFilters.tsx#L22)) to the 5 sibling constants — comment lists each and says "if you add a subtype to RESIDENTIAL_TYPES you MUST add it here too." The comment is instructional, not enforced.
+
+**Option A — shared module** (`lib/constants/property-subtypes.ts` re-imported from 5 files): logged as **OPEN follow-up**. Not shipped now to keep the current dispatch scope tight. Promote to Option A if drift recurs a second time.
+
+##### 5. What could still drift (future risk surface)
+
+- If a new freehold subtype appears in DB (RESO/PropTx feed change), 5 files must be edited AND the SQL RPC re-committed. Missing any one = the same class of stale-gap this closed. VERIFIED alignment as of `67bb717`; "claimed, unverified" for any future date without re-checking.
+- If a new condo subtype appears (`CONDO_SUBTYPES`), only `GeoAdvancedFilters.tsx` needs the chip edit — condo render is un-gated (PropertyPage has no subtype gate). BUT there is a related pre-existing gap in the API predicate: `CONDO_TYPES` at [app/api/geo-listings/route.ts:6](app/api/geo-listings/route.ts#L6) and [app/api/neighbourhood-listings/route.ts:10-13](app/api/neighbourhood-listings/route.ts#L10) — VERIFIED verbatim this session — both list **7 entries** (Condo Apartment, Condo Townhouse, Co-op Apartment, Common Element Condo, Leasehold Condo, Detached Condo, Co-Ownership Apartment). Missing: **Semi-Detached Condo** (52 Active rows). The user-side filter chip for Semi-Detached Condo exists post-67bb717, but the API `.in()` predicate for `propertyCategory='condo'` will not include Semi-Detached Condo rows in results — a visitor who selects the chip gets an empty result set on that subtype (Postgres doesn't match). This is the mirror image of the freehold gap 67bb717 closed. Not fixed this dispatch (BMZDISK is tracker-only per operator scope). Logged as **OPEN — API `CONDO_TYPES` gap** for the next dispatch (2-line fix + smoke, same shape as 67bb717).
+
+##### 6. Files this dispatch
+
+Tracker append only. Backup: `docs/W-MARKETING-TRACKER.md.backup_BMZDISK_20260706_102513`. No code, no SQL, no schema change. Ride-along with the `67bb717` push per operator dispatch.
+
 ##### 3. LocalBusiness / RealEstateAgent — SHIPPED (Rule Zero clean)
 
 **File**: `components/LocalBusinessSchema.tsx` (new, 90 lines). Async server component, gated on `isSeoEnabledTenant()`. Deterministic address parser (splits canonical `"street, locality, region postal, country"` format). Falls back to single-line streetAddress if parse fails.
