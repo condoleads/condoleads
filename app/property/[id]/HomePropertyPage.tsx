@@ -38,12 +38,11 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
     }
   }
 
-  // A-UNIT-3 EXTENSION (2026-07-06): siteName is tenant-derived — agent
-  // branding → tenant.name → neutral generic. Prior 'CondoLeads' hardcode
-  // leaked onto non-legacy tenants (verified live). Rule Zero #1 fix.
+  // A-UNIT-3 EXTENSION (2026-07-06) / LANE-B-2 (2026-07-07): siteName via
+  // shared helper. og:image chained to tenant-aware /og route (Gap C).
+  const { resolveSiteName } = await import('@/lib/utils/site-name')
   const _tenantForBrand = await getTenantByHost(serverSupabase, host)
-  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
+  const siteName = resolveSiteName({ agentBranding, tenant: _tenantForBrand })
 
   const { data: listing } = await serverSupabase
     .from('mls_listings')
@@ -69,13 +68,19 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
   const canonicalDomain = await resolveCanonicalHost()
   const slug = generateHomePropertySlug(listing)
   const canonicalPath = slug && !slug.startsWith('/property/') ? slug : `/property/${params.id}`
+  // LANE-B-2 (2026-07-07): og:image chain — tenant-aware /og when agent has
+  // no og_image_url set. Prior static /og-image.jpg fallback fired for every
+  // non-System-1 tenant. Gap C fix.
+  const ogImage = agentBranding?.og_image_url || `https://${canonicalDomain}/og`
 
   return {
     title,
     description,
     openGraph: {
       title, description,
-      url: `https://${host}/property/${params.id}`,
+      // LANE-B-2 (2026-07-07): og:url matches canonical (slug URL) — prior
+      // emitted /property/UUID which mismatched canonical. SIBLING #5 fix.
+      url: `https://${canonicalDomain}${canonicalPath}`,
       siteName, locale: 'en_CA', type: 'website',
       images: [{ url: ogImage, width: 1200, height: 630, alt: listing.unparsed_address }],
     },

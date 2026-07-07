@@ -52,9 +52,10 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   // agent branding row was empty (verified live on aily.ca where property
   // titles ended `| CondoLeads`). Rule Zero #1 multi-tenant fix. New tenants
   // pick up their own brand suffix by row-insert, unchanged.
+  // LANE-B-2 (2026-07-07): siteName via shared helper (was inline chain).
+  const { resolveSiteName } = await import('@/lib/utils/site-name')
   const _tenantForBrand = await getTenantByHost(serverSupabase, host)
-  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
+  const siteName = resolveSiteName({ agentBranding, tenant: _tenantForBrand })
 
   // Fetch listing data
   // A-UNIT-3 EXTENSION (2026-07-06): added listing_key to the SELECT — the
@@ -107,6 +108,9 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   // Guard: fall through to raw UUID URL only if slug-gen fell back (missing
   // listing_key). Never point canonical at a nonexistent slug.
   const canonicalPath = slug && !slug.startsWith('/property/') ? slug : `/property/${params.id}`
+  // LANE-B-2 (2026-07-07): og:image chain — tenant-aware /og when agent has
+  // no og_image_url set. Gap C fix.
+  const ogImage = agentBranding?.og_image_url || `https://${canonicalDomain}/og`
 
   return {
     title,
@@ -503,7 +507,7 @@ export default async function PropertyPage({ params }: { params: { id: string } 
             listingAddress: listing.unparsed_address || '',
             unitNumber: listing.unit_number || '',
             siteName: agent.site_title || agent.full_name,
-            siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+            siteTagline: agent.site_tagline || 'Real Estate Specialist',
             ogImageUrl: agent.og_image_url
           })};`
         }}

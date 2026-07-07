@@ -158,13 +158,14 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     }
   }
   
-  // A-UNIT-3 EXTENSION (2026-07-06): siteName is tenant-derived — agent
-  // branding → tenant.name → neutral generic. Prior 'CondoLeads' hardcode
-  // leaked onto non-legacy tenants (verified live). Rule Zero #1 fix.
+  // A-UNIT-3 EXTENSION (2026-07-06) / LANE-B-2 (2026-07-07): siteName resolved
+  // via shared helper — no 'CondoLeads' literal fallback. Rule Zero #1.
+  const { resolveSiteName } = await import('@/lib/utils/site-name')
   const _tenantForBrand = await getTenantByHost(serverSupabase, host)
-  const siteName = agentBranding?.site_title ?? _tenantForBrand?.name ?? 'Real Estate'
-  const siteTagline = agentBranding?.site_tagline || 'Toronto Condo Specialist'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
+  const siteName = resolveSiteName({ agentBranding, tenant: _tenantForBrand })
+  // LANE-B-2 (2026-07-07): tagline no longer leaks 'Toronto' branding for
+  // non-Toronto agents. Generic neutral fallback.
+  const siteTagline = agentBranding?.site_tagline || 'Real Estate Specialist'
   
   const { data: building } = await supabase
     .from('buildings')
@@ -262,29 +263,42 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   }
 
  const title = `${building.building_name} Condos - ${building.canonical_address} | ${siteName}`
+  // LANE-B-2 (2026-07-07): keywords derived from real locality — never
+  // "Toronto condos"/"Toronto real estate" for non-Toronto buildings. Uses
+  // localityName already resolved above (community_id → municipality_id →
+  // municipalities.name). NULL → omit locality-scoped tokens entirely.
+  // Rule Zero #1 sibling closed.
+  const _locKw = localityName || ''
+  const _keywords = [
+    building.building_name,
+    building.canonical_address,
+    ..._locKw ? [`${_locKw} condos`, `${_locKw} real estate`] : [],
+    'condos for sale',
+    'condos for rent',
+    'condo listings',
+    'GTA condos',
+  ]
+  // LANE-B-2 (2026-07-07): canonicalDomain already resolved above. og:url
+  // uses it (not raw host) so canonical == og:url deterministically.
+  // og:image falls back to tenant-aware /og route (not static jpg) — Gap C.
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const _canonicalDomain = await resolveCanonicalHost()
+  const _ogUrl = `https://${_canonicalDomain}/${params.slug}`
+  const _ogImage = agentBranding?.og_image_url || `https://${_canonicalDomain}/og`
   return {
     title,
     description,
-    keywords: [
-      building.building_name,
-      'Toronto condos',
-      'condos for sale',
-      'condos for rent',
-      building.canonical_address,
-      'Toronto real estate',
-      'condo listings',
-      'GTA condos'
-    ],
+    keywords: _keywords,
     openGraph: {
       title,
       description,
-      url: `https://${host}/${params.slug}`,
+      url: _ogUrl,
       siteName: siteName,
       locale: 'en_CA',
       type: 'website',
       images: [
         {
-          url: ogImage,
+          url: _ogImage,
           width: 1200,
           height: 630,
           alt: `${building.building_name} - ${siteName}`,
@@ -295,7 +309,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
       card: 'summary_large_image',
       title,
       description,
-      images: [ogImage],
+      images: [_ogImage],
     },
     robots: {
       index: true,
@@ -490,7 +504,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               brokerage_address: agent.brokerage_address,
               title: agent.title,
               siteName: agent.site_title || agent.full_name,
-              siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+              siteTagline: agent.site_tagline || 'Real Estate Specialist',
               ogImageUrl: agent.og_image_url
             })};`
           }}
@@ -693,10 +707,11 @@ export default async function BuildingPage({ params }: { params: { slug: string 
 
             <ListYourUnit buildingName={building.building_name} buildingId={building.id} agentId={agent?.id || ""} />
             
-            <SEODescription 
+            <SEODescription
               building={building}
               totalListings={allListings.length}
               avgPrice={avgSalePrice}
+              localityName={_geoChain.muni?.name || null}
             />
           </div>
           

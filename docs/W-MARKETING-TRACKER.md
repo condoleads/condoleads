@@ -3142,6 +3142,233 @@ Building Collingwood description stayed byte-identical (111c) — helper returns
 
 HOLD push per operator dispatch — `9b8fce6` amended with these fixes, still not on origin.
 
+#### ON-PAGE RE-AUDIT (post-`f946ff7`) — SIBLINGS FOUND, NOT COMPREHENSIVE (2026-07-06)
+
+Comprehensive sibling hunt across the two bug classes hit this session (Toronto hardcode, `|| 'CondoLeads'` fallback) plus canonical↔og:url alignment and crawlable-link parity. Push base clean: HEAD == origin/main == `f946ff7`, 0 ahead. All rendering verified from curl-of-live-response on aily.ca AND walliam.ca with cache-bust. **Verdict up front: NOT comprehensive — 5 live Rule Zero #1 siblings plus 2 lesser gaps. Certification withheld until closed.**
+
+##### 1. Rendered-output verbatim (aily.ca, 10 pages; walliam.ca spot-checks)
+
+Sampled 10 URLs on each tenant: homepage, condo (Mississauga W13140320), home (Oakville W12726828), building Mississauga (`4005-hickory-drive-mississauga`), building Collingwood (`side-launch-1-shipyard-lane-collingwood`), area (`/chatham-kent-area`), muni (`/toronto-e02`), community (`/grindstone`), neighbourhood (`/toronto/downtown`), development (`/corktown-district-lofts-...`). All returned HTTP 200. Full curl-of-live-response parsed via `scripts/_reaudit-parse.js` (safe — reads local HTML, no DB, no network).
+
+##### 2. Comprehensiveness matrix (aily.ca)
+
+Symbols: ✓ present + correct · ⚠️ present but flawed · ❌ live Rule-Zero / class-of-bug sibling
+
+| Element | Home | Condo | Home Prop | Bldg Miss | Bldg Col | Area | Muni | Community | Nbhd | Dev |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `<title>` (tenant-derived, brand ok) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ❌ ends `\| CondoLeads` |
+| meta description ≤160c | ✓ 119c | ✓ 144c | ✓ 139c | ⚠️ 145c | ⚠️ 111c | ✓ 107c | ✓ 111c | ✓ 113c | ✓ 64c | ⚠️ 148c |
+| exactly 1 `<h1>` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| H2/H3 hierarchy | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| canonical (slug URL) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **canonical == og:url** | ⚠️ trailing-slash diff | ✓ | ❌ og:url = `/property/UUID` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| og:image | ✓ `/og` | ⚠️ static jpg | ⚠️ static jpg | ⚠️ static jpg | ⚠️ static jpg | ✓ `/og` | ✓ `/og` | ✓ `/og` | ✓ `/og` | ⚠️ static jpg |
+| Twitter Card | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| meta `keywords` — no hardcoded Toronto | n/a | ✓ | ✓ | ❌ `Toronto condos, Toronto real estate, GTA condos` | ❌ same hardcode | ✓ n/a | ✓ n/a | ✓ n/a | ✓ n/a | ✓ n/a |
+| body copy — no Toronto for non-Toronto | ✓ | ⚠️ "Toronto Condo Specialist" tagline + Charlie widget copy | ⚠️ same | ❌ "in Toronto's competitive real estate market" | ❌ same | ✓ | ✓ | ✓ | n/a Toronto by URL | ❌ "located in Toronto" + "in Toronto's competitive market" |
+| JSON-LD @types | RealEstateAgent ✓ | RealEstateListing + BreadcrumbList ✓ | same ✓ | ApartmentComplex + BreadcrumbList ✓ | same ✓ | BreadcrumbList + AdministrativeArea ✓ | + City ✓ | + Place ✓ | + Place ✓ | BreadcrumbList only |
+| image alt (100%) | ✓ 12/12 | ✓ 18/18 | ✓ 29/29 | ✓ 0/0 (no images on page) | ✓ 2/2 | ✓ 24/24 | ✓ 0/0 | ✓ 8/8 | ✓ 24/24 | ✓ 5/5 |
+| crawlable listing card `<a>` (`block no-underline`) | n/a | n/a | 8 wrap ✓ | n/a | n/a | 24 wrap ✓ | 0 (empty muni) | 8 wrap ✓ | 24 wrap ✓ | n/a |
+
+##### 3. Live Rule Zero #1 siblings — 5 items (both tenants unless noted)
+
+**SIBLING #1: DevelopmentPage title `|| 'CondoLeads'`** (same class as A-UNIT-3-EXT which fixed property/HomeProperty/Building — the 4th file was MISSED).
+- File: [app/[slug]/DevelopmentPage.tsx:83](app/[slug]/DevelopmentPage.tsx#L83) `siteName = agentBranding?.site_title || 'CondoLeads'`; also `:221` `siteTagline` fallback.
+- Live on aily: Corktown title = `Corktown District Lofts | 569 King St E, Toronto, 52 Sumach St, Toronto, 510 King St E, Toronto, 549 King St E, Toronto | CondoLeads`.
+- Live on walliam: **same** — title ends `| CondoLeads` (not `| WALLiam`). Brand leak on walliam. **Blocking**.
+
+**SIBLING #2: BuildingPage `keywords` meta hardcodes Toronto** (same class as PropertySEO Toronto fix — missed on BuildingPage's keywords array).
+- File: [app/[slug]/BuildingPage.tsx:265-275](app/[slug]/BuildingPage.tsx#L265) — `keywords: [building_name, 'Toronto condos', 'condos for sale', 'condos for rent', canonical_address, 'Toronto real estate', 'condo listings', 'GTA condos']`.
+- Live on both tenants: `<meta name="keywords" content="4005 Hickory,Toronto condos,condos for sale,condos for rent,4005 Hickory Drive, Mississauga,Toronto real estate,condo listings,GTA condos"/>` — Mississauga building claims Toronto keywords. Same on Collingwood. **Blocking.**
+
+**SIBLING #3: SEODescription.tsx hardcodes "Toronto's competitive real estate market"** (same class as PropertySEO fix — missed on building's on-page SEO body).
+- File: [app/[slug]/components/SEODescription.tsx:34](app/[slug]/components/SEODescription.tsx#L34) — `${building.building_name} stands out in Toronto's competitive real estate market for its prime location in the ${building.city_district || 'downtown'} area.`
+- Live on both tenants (Mississauga building body): `... stands out in Toronto's competitive real estate market for its prime location in the ...`. **Blocking**.
+
+**SIBLING #4: DevelopmentSEO.tsx hardcodes Toronto** (2 hits — introduction + competitive-market line).
+- File: [app/[slug]/components/DevelopmentSEO.tsx:39](app/[slug]/components/DevelopmentSEO.tsx#L39) — `${developmentName} is a prestigious multi-building condominium development located in Toronto`.
+- [DevelopmentSEO.tsx:86](app/[slug]/components/DevelopmentSEO.tsx#L86) — `${developmentName} stands out in Toronto's competitive real estate market for its cohesive design`.
+- Live: Corktown development body renders both phrases. (Corktown IS in Toronto, so the phrases happen to be factually correct here — but the code path claims Toronto for EVERY development regardless of actual locality.) **Blocking as a code-level Rule Zero #1** even though the sampled row happens to be Toronto-correct.
+
+**SIBLING #5: HomePropertyPage og:url uses `/property/UUID` not canonical slug** (same class as condo fix in LANE-B-1 — I only fixed [property/[id]/page.tsx](app/property/[id]/page.tsx), missed HomePropertyPage).
+- File: [app/property/[id]/HomePropertyPage.tsx:78](app/property/[id]/HomePropertyPage.tsx#L78) — `url: \`https://${host}/property/${params.id}\``.
+- Live on both tenants (Oakville home): canonical `https://aily.ca/2386-sovereign-street-oakville-w12726828` vs og:url `https://aily.ca/property/eba41509-...` — mismatch. **Blocking**.
+
+##### 4. Lesser gaps (⚠️ — not Rule Zero, quality-of-life)
+
+**GAP A: Homepage canonical trailing-slash / og:url mismatch** — [comprehensive-site/page.tsx:25](app/comprehensive-site/page.tsx#L25) sets `url = \`https://${tenant.domain}\`` (no slash) but `canonical: \`https://${canonicalDomain}/\`` (WITH slash). Cosmetic — both are valid URLs; Google normalizes; small mismatch.
+
+**GAP B: `Toronto Condo Specialist` site_tagline fallback** — 6 files use `agent.site_tagline || 'Toronto Condo Specialist'`: [app/page.tsx:298,453](app/page.tsx#L298), [app/property/[id]/page.tsx:506](app/property/[id]/page.tsx#L506), [app/[slug]/BuildingPage.tsx:166,493](app/[slug]/BuildingPage.tsx#L166), [app/[slug]/DevelopmentPage.tsx:221](app/[slug]/DevelopmentPage.tsx#L221). This is a marketing tagline that leaks "Toronto" branding for non-Toronto agents. Not a factual-locality claim so weaker Rule Zero — but real leak on both tenants' Mississauga condo body (visible via "Toronto Condo Specialist" grep hits). Recommended fix: same tenant-chain pattern as `siteName` — layer `tenant.name` or a generic before the Toronto fallback.
+
+**GAP C: Property/Building/Development og:image falls back to `/og-image.jpg`** — the tenant-aware `/og` route is used by geo pages and homepage, but property/building/development use `agentBranding?.og_image_url || '/og-image.jpg'`. Live: property `og:image` is `http://localhost:3000/og-image.jpg` on both tenants (agent branding has no `og_image_url` set). Same class as A-UNIT-3-EXT geo pages fix; missed on property/building/development.
+
+##### 5. Keyword consistency (per operator's still-open item)
+
+| Page type | Consistent? | Details |
+|---|---|---|
+| Homepage | ✓ | title/desc/H1 all anchor on `GTA Condos & Homes`, `AI-Powered Search`, `AI Real Estate` |
+| Condo property | ⚠️ | title carries `condo`/beds/building/`Bed`/brand; H1 = `Unit N at {building}` (LANE-B-1 strengthened); H2s are UI labels (`About This Property`, `Property Details`) |
+| Home property | ⚠️ | title carries `Sidesplit`/beds/`Bed`/brand; H1 = `{address} — {subtype}` (LANE-B-1); H2s are UI labels |
+| Building | ⚠️ | title `{name} Condos - {address}`; H1 `{name} Condos` (LANE-B-1); H2s = product-feature labels (`Get Instant Digital Estimates`, `Market Overview`) — not condo-keyword; body carries `keywords` meta with Toronto (see Sibling #2) |
+| Area/Muni/Community/Neighbourhood | ✓ | title/desc/H1/H2 all anchor on `{geo} Real Estate` / `condos and homes` / `Communities in {geo}` — strong consistency |
+| Development | ❌ | title includes 4 different Toronto addresses (from development.address_display or similar) → 91-char title; H1 = development name only; H2s = `Buildings in {name}` / `About {name}` — H1 and H2 don't reflect the title's address bundle |
+
+Development title being an address-catalog isn't a Rule Zero fix per se, but title truncation risk (Google truncates at ~60c; Corktown title is 91c) reduces SERP quality. Not blocking, log for later.
+
+##### 6. Both-tenant leak audit summary
+
+| Class | aily | walliam |
+|---|---|---|
+| `CondoLeads` in title (any page) | Development ❌ | Development ❌ + walliam expected `WALLiam` → CondoLeads leak on wrong tenant |
+| `aily` on walliam page | n/a | ✓ NONE |
+| `WALLiam` on aily page | ✓ NONE | n/a |
+| Toronto claim on non-Toronto Building keywords | ❌ Mississauga + Collingwood | ❌ same |
+| Toronto claim on non-Toronto Building body (`competitive market`) | ❌ Mississauga | ❌ same |
+| Toronto claim on non-Toronto Development body | ⚠️ (all Corktown was Toronto so factually OK today, but the code path is Rule Zero for future non-Toronto dev) | same |
+
+##### 7. Verdict — NOT COMPREHENSIVE
+
+**5 live Rule Zero #1 siblings + 3 lesser gaps blocking certification.**
+- SIBLING #1 (DevelopmentPage `\| CondoLeads`): both tenants live-leaking.
+- SIBLING #2 (BuildingPage keywords meta): every building.
+- SIBLING #3 (SEODescription Toronto competitive): every building.
+- SIBLING #4 (DevelopmentSEO Toronto): every development.
+- SIBLING #5 (HomePropertyPage og:url): every home listing.
+- GAP A (homepage canonical trailing slash): 1 line.
+- GAP B (Toronto Condo Specialist tagline fallback): 6 sites.
+- GAP C (property/building/dev og:image static fallback): 3 files.
+
+Certification requires all 5 SIBLINGS closed. GAPS A/B/C are recommended-close in the same dispatch (small scope). Per operator: "Any live Rule Zero #1 sibling → ships THIS session (NOTHING-DEFERRED)". This dispatch was declared READ-ONLY at the header ("No edit, no commit. Report, tracker recon-line, STOP.") — so the fixes are logged here and will be closed in a follow-on LANE-B BUILD 2 dispatch. Recon vs build is the operator's next call.
+
+##### 8. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_ON-PAGE-REAUDIT_20260706_210501`. Parser helper written to `scripts/_reaudit-parse.js` (safe — reads local HTML). Live curl x 20 URLs (10 aily + 10 walliam) with cache-bust. Grep across `app/` and `components/` for hardcoded `Toronto` and `'CondoLeads'` in SEO/metadata/display paths — every hit above cited by file:line this session.
+
+Anything not runtime-verified (e.g. sitemap → Development crawlability, condo page canonical population beyond the sampled listing) is flagged **"claimed, unverified"** at the specific finding.
+
+**On-page NOT yet comprehensive.** LANE-B BUILD 2 needs to close the 5 siblings + 3 gaps before this can be certified.
+
+#### LANE-B BUILD 2 — 5 siblings + 3 gaps CLOSED, class-of-bug prevention SHIPPED (2026-07-07)
+
+Closes all 5 Rule Zero #1 siblings + 3 lesser gaps flagged in the RE-AUDIT, and — per COMPREHENSIVE — extracts a shared helper for the brand-fallback class so a 6th instance can't recur via a new page-type file. Push base clean: HEAD == origin/main == `f946ff7`.
+
+##### 1. Step 0 — COMPLETE class sweep (before any code change)
+
+**Class 1 — `'CondoLeads'` fallback in title/metadata paths** (`grep -rn "|| 'CondoLeads'\||| \"CondoLeads\"\|?? 'CondoLeads'"`):
+| Site | Fixed? |
+|---|---|
+| `app/[slug]/DevelopmentPage.tsx:83` | ✅ this dispatch |
+| `app/comprehensive-site/toronto/[neighbourhood]/page.tsx:44` | ✅ this dispatch |
+| `app/comprehensive-site/layout.tsx:58` | ✅ this dispatch |
+| `app/property/[id]/page.tsx` (was inline chain, no `CondoLeads` literal since A-UNIT-3-EXT) | ✅ refactored to shared helper |
+| `app/property/[id]/HomePropertyPage.tsx` (same) | ✅ refactored to shared helper |
+| `app/[slug]/BuildingPage.tsx` (same) | ✅ refactored to shared helper |
+| `lib/tenant/getTenantBrand.ts:36` | ⚠️ SKIPPED — it's a general-purpose brand resolver used by non-title paths (e.g. layout wordmark). Changing its default would affect nav/chrome. Left as-is; the shared `resolveSiteName` helper handles title paths without touching this. |
+| `components/UniversalNav.tsx:25`, `components/ConditionalLayout.tsx:38`, `components/navigation/SiteHeader.tsx:197` | ⚠️ NAV CHROME (not metadata title) — same reason. Nav has its own fallback semantics. Log for future evaluation if operator wants nav-side neutrality. |
+
+**Class 2 — Toronto hardcodes in SEO/metadata/display paths**:
+| Site | Fixed? |
+|---|---|
+| `app/[slug]/BuildingPage.tsx:270,274` (meta `keywords` array) | ✅ derived from locality; NULL → omit locality-scoped tokens |
+| `app/[slug]/components/SEODescription.tsx` (6 hits: `:21,34,42,55,59,60,61,62`) | ✅ locality prop threaded from parent (`_geoChain.muni.name`) |
+| `app/[slug]/components/DevelopmentSEO.tsx:39,86,121,125,127,129` | ✅ locality prop threaded from parent (first building's community_id resolve) |
+| `app/[slug]/BuildingPage.tsx:166` (`siteTagline` fallback `'Toronto Condo Specialist'`) | ✅ → `'Real Estate Specialist'` (generic, no locality claim) |
+| `app/[slug]/BuildingPage.tsx:507` (siteTagline in window.__AGENT_DATA__) | ✅ same |
+| `app/[slug]/DevelopmentPage.tsx:232` (siteTagline in window.__AGENT_DATA__) | ✅ same |
+| `app/property/[id]/page.tsx:510` (siteTagline) | ✅ same |
+| `app/page.tsx:298,453` (root — System 1 legacy path for agent subdomains) | ⚠️ SKIPPED per CLAUDE.md "Never modify System 1". Log as system-1-carved. |
+| `ai_welcome_message` DB default `Hi! I'm your AI condo assistant. Ask me anything about Toronto condos, ...` | ⚠️ SKIPPED — it's a DB column default, not a code hardcode. Requires a migration to change; scope-wise it's chat widget copy, not SEO metadata. Log for future. |
+
+**Class 3 — og:url ≠ canonical**:
+| Site | Fixed? |
+|---|---|
+| `app/property/[id]/HomePropertyPage.tsx:78` (used `${host}/property/${id}`) | ✅ now uses `${canonicalDomain}${canonicalPath}` — matches canonical |
+| `app/property/[id]/page.tsx` (already fixed in LANE-B-1) | ✓ verified |
+| `app/[slug]/BuildingPage.tsx:281` (used `${host}/${slug}`) | ✅ now uses `${canonicalDomain}/${slug}` |
+| `app/[slug]/DevelopmentPage.tsx:108` (used `${host}/${slug}`) | ✅ now uses `${canonicalDomain}/${slug}` |
+| `app/comprehensive-site/page.tsx:25` (og:url `https://{domain}` vs canonical `.../`) | ✅ both end with `/` now |
+
+##### 2. Shared helper (COMPREHENSIVE — prevents Class-1 recurrence)
+
+New: [lib/utils/site-name.ts](lib/utils/site-name.ts). Exports `resolveSiteName({ agentBranding, tenant })` — layers `agentBranding.site_title → tenant.name → 'Real Estate'` (neutral generic). Imported and used by:
+- [app/property/[id]/page.tsx](app/property/[id]/page.tsx)
+- [app/property/[id]/HomePropertyPage.tsx](app/property/[id]/HomePropertyPage.tsx)
+- [app/[slug]/BuildingPage.tsx](app/[slug]/BuildingPage.tsx)
+- [app/[slug]/DevelopmentPage.tsx](app/[slug]/DevelopmentPage.tsx)
+
+A 6th title-generating page can only inherit the correct fallback by importing this helper. The prior inline `?? 'CondoLeads'` literal is architecturally prevented in title paths.
+
+##### 3. Live smoke (both tenants, cache-busted)
+
+**aily.ca** — 6 page types + neighbourhood:
+| Page | title | canonical == og:url | og:image | Toronto leak (non-Toronto) | CondoLeads |
+|---|---|:---:|---|:---:|:---:|
+| Homepage | `GTA Condos & Homes — AI-Powered Search \| aily` | ✓ both `https://aily.ca/` | `/og` | n/a | ✓ NONE |
+| Condo Mississauga W13140320 | `... \| Unit 13 \| 4015 Hickory \| $2,995 \| 2 Bed \| aily` | ✓ slug URL | `/og` | body clean of SEO Toronto (chat widget copy still says "Toronto condos" per DB default `ai_welcome_message` — SKIPPED, see Class 2 table) | ✓ NONE |
+| Home Oakville W12726828 | `... \| 1 1/2 Storey \| $1,675,000 \| 3 Bed \| aily` | ✓ slug URL (was UUID!) | `/og` | same chat-widget note | ✓ NONE |
+| Building Mississauga | `4005 Hickory Condos - 4005 Hickory Drive, Mississauga \| aily` | ✓ | `/og` | keywords: `Mississauga condos, Mississauga real estate` (was Toronto!) | ✓ NONE |
+| Building Collingwood | `Side Launch Condos - 1 Shipyard Lane, Collingwood \| aily` | ✓ | `/og` | keywords: `Collingwood condos, Collingwood real estate` | ✓ NONE |
+| Development Corktown | `... \| aily` (was `\| CondoLeads`!) | ✓ | `/og` | Corktown IS Toronto so factually correct today; code path now derives from real locality | ✓ NONE |
+| Neighbourhood Downtown | `Downtown Real Estate – Condos & Homes \| aily` | ✓ | `/og` | n/a | ✓ NONE |
+
+**walliam.ca** — 5 page types:
+| Page | title | canonical == og:url | CondoLeads | aily leak | JSON-LD |
+|---|---|:---:|:---:|:---:|:---:|
+| Condo Mississauga | `... \| Unit 13 \| 4015 Hickory \| $2,995 \| 2 Bed \| WALLiam` | ✓ | ✓ | ✓ | 0 |
+| Home Oakville | `... \| 1 1/2 Storey \| $1,675,000 \| 3 Bed \| WALLiam` | ✓ | ✓ | ✓ | 0 |
+| Building Mississauga | `4005 Hickory Condos - 4005 Hickory Drive, Mississauga \| WALLiam` | ✓ | ✓ | ✓ | 0 |
+| Building Collingwood | `Side Launch Condos - 1 Shipyard Lane, Collingwood \| WALLiam` | ✓ | ✓ | ✓ | 0 |
+| Development Corktown | `... \| WALLiam` (was `\| CondoLeads`!) | ✓ | ✓ | ✓ | 0 |
+| Neighbourhood Downtown | `Downtown Real Estate – Condos & Homes \| WALLiam` | ✓ | ✓ | ✓ | 0 |
+
+##### 4. Post-fix codebase sweep — proof of certification
+
+Post-fix grep this session:
+- `grep -rn "|| 'CondoLeads'" app/comprehensive-site/ app/property/ app/[slug]/ --include="*.tsx" --include="*.ts"` → **0 hits** in SEO metadata paths (only remaining Class 1 sites are lib/tenant/getTenantBrand.ts and nav chrome components, intentionally left; see item 1 exceptions).
+- `grep -rnE "'Toronto condos'\|'Toronto real estate'\|located in Toronto\|Toronto.{0,3}s competitive"` in `app/` + `components/` → **0 hits** in rendering-path components (SEODescription + DevelopmentSEO + BuildingPage keywords all use real locality now).
+- `grep -rn "url: \`https://\${host}"` in `app/` → **0 hits** (all og:url sources use `canonicalDomain`).
+
+##### 5. Remaining known non-metadata Toronto references (documented, not in scope)
+
+These aren't title/description/OG/JSON-LD/keywords surfaces so they don't affect the SEO comprehensiveness verdict, but flagging for completeness:
+- **`ai_welcome_message` DB default**: `Hi! I'm your AI condo assistant. Ask me anything about Toronto condos, pricing, or this building!` — chat widget welcome text default in the DB. Renders in the Charlie/chat widget on property pages. Fix requires a SQL migration. **OPEN follow-up** — if operator wants tenant-scoped welcome message defaults, next dispatch.
+- **`app/page.tsx:298,453` (System 1)**: `'Toronto Condo Specialist'` tagline fallback and `'Find luxury Toronto condos with ${agent.full_name}'` description. **CLAUDE.md — never modify System 1.** Fires only on legacy agent subdomains (`.condoleads.ca`); does NOT affect aily/walliam.
+
+##### 6. Verdict — CERTIFIED COMPREHENSIVE (on-page SEO)
+
+All 5 Rule Zero #1 siblings CLOSED. All 3 gaps CLOSED. Post-fix grep confirms zero remaining hardcoded Toronto/CondoLeads in title/description/OG/keywords/JSON-LD paths of any page type on either tenant. og:url == canonical everywhere. og:image everywhere uses tenant-aware `/og`.
+
+**On-page SEO comprehensive: aily.ca ✓ · walliam.ca ✓.**
+
+Known non-blocking follow-ups: `ai_welcome_message` DB default (chat widget welcome text, non-SEO), and System 1 legacy `app/page.tsx` copy (out of scope per CLAUDE.md).
+
+##### 7. Files this dispatch
+
+New:
+- `lib/utils/site-name.ts` (shared helper — Class 1 prevention architecture)
+
+Modified (with `.backup_LANE-B-2_20260707_083057` on each source):
+- `app/[slug]/DevelopmentPage.tsx` (Class 1 shared helper + Class 3 canonicalDomain + Gap C og:image + Gap B tagline + locality prop for DevelopmentSEO)
+- `app/[slug]/BuildingPage.tsx` (Class 1 shared helper + Class 3 canonicalDomain + Class 2 keywords from locality + Gap C og:image + Gap B tagline + locality prop for SEODescription)
+- `app/[slug]/components/SEODescription.tsx` (Class 2 locality prop everywhere)
+- `app/[slug]/components/DevelopmentSEO.tsx` (Class 2 locality prop everywhere)
+- `app/property/[id]/HomePropertyPage.tsx` (Class 1 shared helper + Class 3 og:url + Gap C og:image)
+- `app/property/[id]/page.tsx` (Class 1 shared helper + Gap C og:image + Gap B tagline)
+- `app/comprehensive-site/page.tsx` (Gap A trailing slash)
+
+Modified (with `.backup_LANE-B-2b_20260707_083057`):
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx` (Class 1)
+- `app/comprehensive-site/layout.tsx` (Class 1)
+
+Modified (with `.backup_LANE-B-2_20260707_083057`):
+- `app/page.tsx` (backed up but NOT edited — System 1 carve; log-only)
+
+`docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_LANE-B-2_20260707_083057`).
+
+TSC exit 0 across all edits. `.env.local` not staged. 10 file backups untracked.
+
+HOLD push per operator dispatch.
+
 ##### 8. Files this dispatch
 
 Modified (with `.backup_LANE-B-1_20260706_201647`):

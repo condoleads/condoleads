@@ -22,8 +22,11 @@ export async function generateMetadata(): Promise<Metadata> {
       }
     }
 
-    const url = `https://${tenant.domain}`
-    const ogImageUrl = `${url}/og`
+    // LANE-B-2 (2026-07-07): trailing-slash-consistent URL for og:url ↔
+    // canonical alignment. Prior emitted `https://{domain}` (no slash) for
+    // og:url while canonical used `.../` (with slash). Gap A fix.
+    const url = `https://${tenant.domain}/`
+    const ogImageUrl = `https://${tenant.domain}/og`
     // A-UNIT-3 (2026-07-06): keyword-first title. Prior brand-first shape
     // ("${tenant.name} - AI Real Estate Assistant for the GTA") was weak for
     // non-branded queries. Now leads with the primary keyword phrase and

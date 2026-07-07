@@ -80,24 +80,33 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
     }
   }
   
-  const siteName = agentBranding?.site_title || 'CondoLeads'
-  const ogImage = agentBranding?.og_image_url || '/og-image.jpg'
-  
+  // LANE-B-2 (2026-07-07): siteName tenant-derived via shared helper — no
+  // more 'CondoLeads' literal fallback. Rule Zero #1 sibling closed.
+  const { getTenantByHost } = await import('@/lib/utils/tenant-brand')
+  const { resolveSiteName } = await import('@/lib/utils/site-name')
+  const _tenantForBrand = await getTenantByHost(serverSupabase, host)
+  const siteName = resolveSiteName({ agentBranding, tenant: _tenantForBrand })
+
+  // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per UNIT 61 R2).
+  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
+  const canonicalDomain = await resolveCanonicalHost()
+
+  // LANE-B-2 (2026-07-07): og:image via the tenant-aware /og route
+  // (same source homepage/geo pages use). Prior static /og-image.jpg
+  // fallback fired for any agent without og_image_url set — GAP C fix.
+  const ogImage = agentBranding?.og_image_url || `https://${canonicalDomain}/og`
+
   // Get buildings with addresses
   const { data: buildings } = await serverSupabase
     .from('buildings')
     .select('id, canonical_address')
     .eq('development_id', development.id)
-  
+
   const buildingCount = buildings?.length || 0
   const addresses = buildings?.map(b => b.canonical_address).filter(Boolean).join(', ') || ''
-  
+
   const title = `${development.name} | ${addresses} | ${siteName}`
   const description = `Explore ${development.name} at ${addresses}. ${buildingCount} buildings with condos for sale and rent. View floor plans, amenities, and market insights.`
-
-  // W-MARKETING A-UNIT-1b (2026-07-01): add self-canonical (was absent per UNIT 61 R2).
-  const { resolveCanonicalHost } = await import('@/lib/utils/canonical')
-  const canonicalDomain = await resolveCanonicalHost()
 
   return {
     title,
@@ -105,7 +114,9 @@ export async function generateDevelopmentMetadata(development: { id: string; nam
     openGraph: {
       title,
       description,
-      url: `https://${host}/${development.slug}`,
+      // LANE-B-2 (2026-07-07): og:url uses canonicalDomain (not raw host)
+      // so canonical == og:url even when host differs from canonical.
+      url: `https://${canonicalDomain}/${development.slug}`,
       siteName: siteName,
       locale: 'en_CA',
       type: 'website',
@@ -140,6 +151,28 @@ export default async function DevelopmentPage({ params, development }: Developme
   const buildings = await getCachedDevelopmentBuildings(development.id)
 
   if (!buildings || buildings.length === 0) { notFound() }
+
+  // LANE-B-2 (2026-07-07): resolve real locality from the first building's
+  // community_id → municipality. Used to derive locality-scoped copy in
+  // DevelopmentSEO (replaces hardcoded "Toronto"). NULL when unresolvable
+  // → all locality-scoped phrases omit cleanly. Rule Zero #1 sibling closed.
+  let _devLocalityName: string | null = null
+  const _firstBldg = buildings[0]
+  if (_firstBldg?.community_id) {
+    const { data: _comm } = await supabase
+      .from('communities')
+      .select('municipality_id')
+      .eq('id', _firstBldg.community_id)
+      .single()
+    if (_comm?.municipality_id) {
+      const { data: _muni } = await supabase
+        .from('municipalities')
+        .select('name')
+        .eq('id', _comm.municipality_id)
+        .single()
+      if (_muni?.name && _muni.name.trim().length > 0) _devLocalityName = _muni.name
+    }
+  }
 
   const buildingIds = buildings.map((b: any) => b.id)
 
@@ -218,7 +251,7 @@ export default async function DevelopmentPage({ params, development }: Developme
               brokerage_address: agent.brokerage_address,
               title: agent.title,
               siteName: agent.site_title || agent.full_name,
-              siteTagline: agent.site_tagline || 'Toronto Condo Specialist',
+              siteTagline: agent.site_tagline || 'Real Estate Specialist',
               ogImageUrl: agent.og_image_url,
               buildingName: development.name,
               buildingAddress: addresses
@@ -364,6 +397,7 @@ export default async function DevelopmentPage({ params, development }: Developme
           totalSold={soldCount}
           totalLeased={leasedCount}
           addresses={addresses}
+          localityName={_devLocalityName}
         />
         {agent && (
           <MobileContactBar

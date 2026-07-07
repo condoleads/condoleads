@@ -13,16 +13,23 @@ interface DevelopmentSEOProps {
   totalSold: number
   totalLeased: number
   addresses: string
+  // LANE-B-2 (2026-07-07): real locality resolved by parent from the first
+  // building's community_id → municipality_id → municipalities.name. NULL
+  // when unresolvable; every locality-scoped phrase omits or falls back.
+  // Prior hardcoded "Toronto" at :39/:86/:121/:125/:127/:129 was Rule Zero
+  // #1 — factually wrong on non-Toronto developments.
+  localityName?: string | null
 }
 
-export default function DevelopmentSEO({ 
-  developmentName, 
-  buildings, 
-  totalForSale, 
+export default function DevelopmentSEO({
+  developmentName,
+  buildings,
+  totalForSale,
   totalForLease,
   totalSold,
   totalLeased,
-  addresses 
+  addresses,
+  localityName = null,
 }: DevelopmentSEOProps) {
   const totalUnits = buildings.reduce((sum, b) => sum + (b.total_units || 0), 0)
   const totalTransactions = totalSold + totalLeased
@@ -36,9 +43,9 @@ export default function DevelopmentSEO({
           </h2>
           
           <p className="text-slate-700 leading-relaxed mb-4">
-            {developmentName} is a prestigious multi-building condominium development located in Toronto, 
-            featuring {buildings.length} distinct {buildings.length === 1 ? 'building' : 'buildings'}. 
-            {totalUnits > 0 && ` With a total of ${totalUnits} units across the development,`} {developmentName} offers 
+            {developmentName} is a prestigious multi-building condominium development{localityName ? ` located in ${localityName}` : ''},
+            featuring {buildings.length} distinct {buildings.length === 1 ? 'building' : 'buildings'}.
+            {totalUnits > 0 && ` With a total of ${totalUnits} units across the development,`} {developmentName} offers
             residents a vibrant community with shared amenities and convenient urban living.
           </p>
 
@@ -82,12 +89,14 @@ export default function DevelopmentSEO({
             </p>
           )}
 
-          <p className="text-slate-700 leading-relaxed mb-4">
-            {developmentName} stands out in Toronto's competitive real estate market for its cohesive design, 
-            shared amenities across buildings, and prime location. Residents enjoy easy access to public transit, 
-            parks, restaurants, and all essential services. The development's modern architecture and 
-            well-maintained common areas make it an attractive choice for both homeowners and investors.
-          </p>
+          {localityName && (
+            <p className="text-slate-700 leading-relaxed mb-4">
+              {developmentName} stands out in {localityName}&apos;s competitive real estate market for its cohesive design,
+              shared amenities across buildings, and prime location. Residents enjoy easy access to public transit,
+              parks, restaurants, and all essential services. The development&apos;s modern architecture and
+              well-maintained common areas make it an attractive choice for both homeowners and investors.
+            </p>
+          )}
 
           {/* Individual Building Highlights */}
           <h3 className="text-xl font-semibold text-slate-900 mt-8 mb-4">
@@ -118,15 +127,15 @@ export default function DevelopmentSEO({
 
           <div className="mt-8 pt-8 border-t border-slate-300">
             <h3 className="text-lg font-semibold text-slate-900 mb-3">
-              Keywords: {developmentName} Toronto Real Estate
+              Keywords: {developmentName}{localityName ? ` ${localityName}` : ''} Real Estate
             </h3>
             <p className="text-sm text-slate-600">
               {developmentName} condos for sale, {developmentName} units for rent,
-              {buildings.map(b => ` ${b.building_name} Toronto,`)}
+              {buildings.map(b => ` ${b.building_name}${localityName ? ` ${localityName}` : ''},`)}
               {buildings.map(b => ` ${b.canonical_address} condos,`)}
-              Toronto condo development, multi-building condo Toronto,
-              {developmentName} amenities, Toronto condo market,
-              buy condo {developmentName}, invest Toronto condos
+              {localityName ? `${localityName} condo development, multi-building condo ${localityName}, ` : 'multi-building condo development, '}
+              {developmentName} amenities{localityName ? `, ${localityName} condo market` : ''},
+              buy condo {developmentName}{localityName ? `, invest ${localityName} condos` : ''}
             </p>
           </div>
         </div>

@@ -41,7 +41,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { headers } = await import('next/headers')
   const canonicalDomain = await resolveCanonicalHost()
   const brandTenant = await getTenantByHost(supabase, headers().get('host') || '')
-  const brandName = brandTenant?.name || 'CondoLeads'
+  // LANE-B-2 (2026-07-07): tenant-derived brand — no 'CondoLeads' fallback.
+  // Prior `|| 'CondoLeads'` was Class 1 sibling.
+  const brandName = brandTenant?.name || 'Real Estate'
   const title = `${n.name} Real Estate – Condos & Homes | ${brandName}`
   const description = `Browse condos and homes for sale and lease in ${n.name}, Toronto.`
   const url = `https://${canonicalDomain}/toronto/${params.neighbourhood}`

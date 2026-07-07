@@ -54,8 +54,8 @@ export default async function ComprehensiveLayout({
   // Brand resolution priority:
   //   1. tenant.brand_name (multi-tenant correct)
   //   2. agent-derived siteName (legacy fallback)
-  //   3. 'CondoLeads' (last-resort default)
-  const brandName = tenant?.brand_name ?? agentBranding?.siteName ?? 'CondoLeads'
+  //   3. 'Real Estate' (LANE-B-2 2026-07-07: neutral generic, no CondoLeads leak)
+  const brandName = tenant?.brand_name ?? agentBranding?.siteName ?? 'Real Estate'
   const logoUrl = tenant?.logo_url ?? agentBranding?.logoUrl ?? null
   const primaryColor = tenant?.primary_color ?? agentBranding?.primaryColor ?? '#0A2540'
 
