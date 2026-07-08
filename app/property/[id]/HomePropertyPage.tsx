@@ -56,10 +56,20 @@ export async function generateHomeMetadata({ params }: { params: { id: string } 
   const beds = listing.bedrooms_total ? `${listing.bedrooms_total} Bed` : ''
   const baths = listing.bathrooms_total_integer ? `${listing.bathrooms_total_integer} Bath` : ''
   const type = listing.transaction_type === 'For Sale' ? 'For Sale' : 'For Rent'
-  const style = listing.architectural_style?.[0] || listing.property_subtype || 'Home'
+  // BUNGALOW-DETACHED-ALIGN (2026-07-08): title now uses property_subtype
+  // to match the H1 (PropertyHeader.tsx:71 renders "{address} — {subtype}").
+  // Prior title emitted architectural_style ("Bungalow-Raised", "Sidesplit"…)
+  // which diverged from the H1's subtype ("Detached", "Semi-Detached"…) —
+  // two real terms for the same listing shown to the same user. Real data
+  // preserved: architectural_style now appears in the meta description
+  // when non-null, so nothing is discarded. NULL property_subtype → 'Home'
+  // (existing fallback). NULL architectural_style → omit the "{style} style"
+  // clause cleanly.
+  const subtypeTerm = listing.property_subtype || 'Home'
+  const archStyle = listing.architectural_style?.[0] || null
 
-  const title = [listing.unparsed_address, style, price, beds, siteName].filter(Boolean).join(' | ')
-  const description = `${beds} ${baths} ${style.toLowerCase()} ${type.toLowerCase()} at ${listing.unparsed_address}. ${price}. View photos, room dimensions, and get a free home estimate.`
+  const title = [listing.unparsed_address, subtypeTerm, price, beds, siteName].filter(Boolean).join(' | ')
+  const description = `${beds} ${baths} ${subtypeTerm.toLowerCase()} ${type.toLowerCase()} at ${listing.unparsed_address}.${archStyle ? ` ${archStyle} style.` : ''} ${price}. View photos, room dimensions, and get a free home estimate.`
 
   // W-MARKETING A-UNIT-1b (2026-07-01): dual-URL defense — /property/[UUID]
   // canonicals to the slug URL (SEO-friendly, address+MLS embedded).

@@ -3502,13 +3502,45 @@ VERIFIED unchanged in live smoke:
 
 No keyword-stuffing was introduced anywhere.
 
-##### 5. OPEN operator-decision item (documented, NOT shipped)
+##### 5. OPEN operator-decision item — CLOSED (BUNGALOW-DETACHED-ALIGN, 2026-07-08)
 
-**Home page title `Bungalow-Raised` (from `architectural_style`) vs H1 `— Detached` (from `property_subtype`)** — both fields are real DB values but present different terms to the same user for the same listing. Options:
-- (a) Align: pick one field and use it in both title and H1.
-- (b) Leave both — both are factually accurate and the user sees complementary attribute info in different visual positions.
+**Home page title `Bungalow-Raised` (from `architectural_style`) vs H1 `— Detached` (from `property_subtype`)** — closed by operator decision: **align to `property_subtype`** (matches H1's term, more standard SEO surface). Real `architectural_style` data preserved in the meta description (not discarded).
 
-This is an operator judgment call about UX vs SEO consistency, not a Rule Zero violation. Log as OPEN.
+Fix: [HomePropertyPage.tsx:59](app/property/[id]/HomePropertyPage.tsx#L59).
+- Before: `const style = listing.architectural_style?.[0] || listing.property_subtype || 'Home'` — title AND description both used `style` (i.e. architectural_style with fallback to subtype).
+- After:
+  ```
+  const subtypeTerm = listing.property_subtype || 'Home'
+  const archStyle = listing.architectural_style?.[0] || null
+
+  const title = [address, subtypeTerm, price, beds, siteName].filter(Boolean).join(' | ')
+  const description = `${beds} ${baths} ${subtypeTerm.toLowerCase()} ${type.toLowerCase()} at ${address}.${archStyle ? ` ${archStyle} style.` : ''} ${price}. View photos, room dimensions, and get a free home estimate.`
+  ```
+
+NULL `property_subtype` → `'Home'` fallback (unchanged behavior). NULL `architectural_style` → the " {archStyle} style." clause omits cleanly (never "null style").
+
+Live smoke — both tenants, 2 subtypes (Detached with archStyle, Semi-Detached with archStyle):
+| Tenant | Listing | title type-term | H1 subtype | Aligned? | Description mentions archStyle? |
+|---|---|---|---|:---:|---|
+| aily.ca | W12820708 Detached | `Detached` (was `Bungalow-Raised`) | `Detached` | ✓ | `... Bungalow-Raised style.` ✓ preserved |
+| aily.ca | X13452542 Semi-Detached | `Semi-Detached` | `Semi-Detached` | ✓ | `... 2-Storey style.` ✓ preserved |
+| walliam.ca | W12820708 | `Detached` | `Detached` | ✓ | `... Bungalow-Raised style.` ✓ |
+| walliam.ca | X13452542 | `Semi-Detached` | `Semi-Detached` | ✓ | `... 2-Storey style.` ✓ |
+
+Verbatim aily.ca W12820708:
+```
+title: 409 Tennyson Drive, Oakville, ON L6L 3Z2 | Detached | $1,084,900 | 4 Bed | aily
+H1:    409 Tennyson Drive — Detached
+desc:  4 Bed 2 Bath detached for sale at 409 Tennyson Drive, Oakville, ON L6L 3Z2. Bungalow-Raised style. $1,084,900. View photos, room dimensions, and get a free home estimate.
+```
+
+Not hardcoded to "Detached" — the smoke on Semi-Detached listing X13452542 verified the term is derived per-listing from real `property_subtype`. Both tenants render identically for the title term (no leak).
+
+Files modified (with `.backup_BUNGALOW-DETACHED-ALIGN_20260708_160935`):
+- `app/property/[id]/HomePropertyPage.tsx`
+- `docs/W-MARKETING-TRACKER.md` (this section update; backup `.backup_BUNGALOW-DETACHED-ALIGN_20260708_160935`)
+
+TSC exit 0. `.env.local` not staged. Item CLOSED.
 
 ##### 6. Files this dispatch
 
