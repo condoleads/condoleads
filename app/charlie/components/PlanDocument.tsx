@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
 import { useTenantWordmarkStyle } from '@/hooks/useTenantWordmarkStyle'
 import AppointmentForm from './AppointmentForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface AgentInfo {
   name: string
@@ -153,6 +154,8 @@ export default function PlanDocument(props: PlanDocumentProps) {
 
       const data = await res.json()
       if (data.success) {
+        // C-UNIT-1 (2026-07-08): plan-lead conversion. No PII in params.
+        trackEvent('plan_generated_submit')
         // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if the plan email
         // didn't actually reach the user, surface an honest note. The plan is
         // already on screen; the user can save the page.

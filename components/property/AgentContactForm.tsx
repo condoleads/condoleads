@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { MLSListing } from '@/lib/types/building'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface AgentContactFormProps {
   listing: MLSListing
@@ -90,6 +91,13 @@ export default function AgentContactForm({ listing, status, isSale, agent, isHom
     setIsSubmitting(false)
 
     if (result.success) {
+      // C-UNIT-1 (2026-07-08): fire GA4 conversion event on SUCCESSFUL POST
+      // only. No PII (no name/email/phone) — surface metadata only.
+      trackEvent('contact_agent_submit', {
+        listing_id: listing.id,
+        transaction_type: listing.transaction_type,
+        is_home: isHome,
+      })
       setSubmitted(true)
       setFormData({ name: '', email: '', phone: '', message: '' })
       setTimeout(() => setSubmitted(false), 5000)

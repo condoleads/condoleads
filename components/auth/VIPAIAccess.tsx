@@ -7,6 +7,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from './AuthContext'
 import RegisterModal from './RegisterModal'
 import { useCreditSession } from '@/components/credits/CreditSessionContext'
+import { trackEvent } from '@/lib/analytics/track'
 
 
 interface Props {
@@ -81,11 +82,16 @@ export default function VIPAIAccess({
     if (!credits?.sessionId || requesting || !state.tenantId) return
     setRequesting(true)
     try {
-      await fetch('/api/walliam/charlie/vip-request', {
+      const _resp = await fetch('/api/walliam/charlie/vip-request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-tenant-id': state.tenantId },
         body: JSON.stringify({ sessionId: credits.sessionId, planType: 'buyer' }),
       })
+      if (_resp.ok) {
+        // C-UNIT-1 (2026-07-08): VIP access grant request (auth-gated
+        // premium unlock). Fires on 2xx; no PII.
+        trackEvent('vip_access_grant')
+      }
       setRequested(true)
     } catch {}
     setRequesting(false)

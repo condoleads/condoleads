@@ -21,6 +21,10 @@ export interface TenantContext {
   domain: string
   name: string
   wordmarkStyle: string
+  // C-UNIT-1 (2026-07-08): per-tenant GA4 measurement ID for the root layout
+  // TenantAnalytics mount. NULL when the tenant hasn't been provisioned in
+  // Google Analytics yet — TenantAnalytics fails closed on NULL (no script).
+  googleAnalyticsId: string | null
 }
 
 export async function getTenantContext(
@@ -31,7 +35,7 @@ export async function getTenantContext(
 
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('id, source_key, brand_name, name, domain, wordmark_style')
+    .select('id, source_key, brand_name, name, domain, wordmark_style, google_analytics_id')
     .eq('id', tenantId)
     .maybeSingle()
 
@@ -47,6 +51,7 @@ export async function getTenantContext(
     domain: tenant.domain,
     name: tenant.name || brandName,
     wordmarkStyle: tenant.wordmark_style || 'standard',
+    googleAnalyticsId: tenant.google_analytics_id || null,
   }
 }
 
@@ -71,7 +76,7 @@ export async function getTenantByHost(
 
   const { data: tenant, error } = await supabase
     .from('tenants')
-    .select('id, source_key, brand_name, name, domain, wordmark_style')
+    .select('id, source_key, brand_name, name, domain, wordmark_style, google_analytics_id')
     .eq('domain', lookupDomain)
     .eq('is_active', true)
     .maybeSingle()
@@ -88,6 +93,7 @@ export async function getTenantByHost(
     domain: tenant.domain,
     name: tenant.name || brandName,
     wordmarkStyle: tenant.wordmark_style || 'standard',
+    googleAnalyticsId: tenant.google_analytics_id || null,
   }
 }
 

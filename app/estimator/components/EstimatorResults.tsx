@@ -10,6 +10,7 @@ import { generateHomePropertySlug } from '@/lib/utils/slugs'
 import { MessageSquare, AlertTriangle, Phone } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 // W-ESTIMATOR-FIRE-ON-GENERATE (2026-06-17): additive enrichment action
 // for the optional contact-form follow-up. Generate-fire already created
 // the lead with the rich workingDoc; this action updates contact fields
@@ -503,6 +504,8 @@ export default function EstimatorResults({
 
     setIsSubmitting(false)
     if (enrichSucceeded) {
+      // C-UNIT-1 (2026-07-08): estimator conversion — condo flow.
+      trackEvent('estimator_submit', { estimator_kind: 'condo' })
       setSubmitted(true)
       setShowContactForm(false)
     }

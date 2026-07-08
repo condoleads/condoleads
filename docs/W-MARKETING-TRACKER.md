@@ -3542,6 +3542,216 @@ Files modified (with `.backup_BUNGALOW-DETACHED-ALIGN_20260708_160935`):
 
 TSC exit 0. `.env.local` not staged. Item CLOSED.
 
+#### LANE-C RECON — analytics current state (2026-07-08, post-`1f6cdec`)
+
+Push base clean: HEAD == origin/main == `1f6cdec`, 0 ahead. Read-only recon for C-UNIT-1 (GA4). Every claim below cited by grep or DB probe this session.
+
+##### 1. Existing analytics installation
+
+**NOT INSTALLED.** VERIFIED via `grep -rn "gtag\|googletagmanager\|GA_MEASUREMENT\|G-[A-Z0-9]{6,}\|@vercel/analytics\|posthog\|plausible" app/ lib/ components/`. All hits are:
+- Admin UI placeholders showing where operator would type the GA4 ID (e.g. `placeholder="G-XXXXXXXXXX"` at `app/admin/branding/BrandingClient.tsx:376`, `app/admin-homes/settings/SettingsClient.tsx:426`, `components/admin-homes/AddTenantModal.tsx:411`, `components/admin-homes/EditTenantModal.tsx:403`).
+- Zero actual `gtag()` calls, zero `<Script>` mounts for GA4, zero `@vercel/analytics` imports, zero `posthog`/`plausible`/`mixpanel`.
+
+**package.json** — no analytics deps.
+**Root `app/layout.tsx`** — VERIFIED verbatim (first 50 lines): no `<Script>` tags at all. No GA4 install anywhere in the shipped layout tree.
+**`.env.local`** — no `GA_*`/`GTAG_*`/`GA4_*`/`ANALYTICS_*`/`MEASUREMENT_*` env var names present.
+
+**Consent framework**: NONE. No `cookieconsent`/`klaro`/`osano`/`iubenda`/`onetrust`/`CookieBanner` in the codebase. GA4 install will need consent handling for EU visitors (Google's Consent Mode v2 recommended) — flagged as scope decision, not build-blocker.
+
+##### 2. Per-tenant column shape — ALREADY EXISTS
+
+VERIFIED via `information_schema.columns` probe (explicit filter, no `SELECT *` on `tenants`; the tenants row is not read at all). The `tenants` table already carries the columns C-UNIT-1 + related D-UNIT need:
+
+| Column | Type | Purpose |
+|---|---|---|
+| `google_analytics_id` | `text` | GA4 measurement ID (`G-XXXXXXXXXX`) — per tenant |
+| `google_ads_id` | `text` | Google Ads customer ID (D-UNIT scope) |
+| `google_conversion_label` | `text` | Google Ads conversion label (D-UNIT scope) |
+
+**Current per-tenant values** (fingerprint check — GA4 IDs printed as `first4...last4 (len=N)`, no full value):
+```
+aily.ca      GA4: NULL   Ads: NULL   Label: NULL
+walliam.ca   GA4: NULL   Ads: NULL   Label: NULL
+```
+
+**Verdict**: **No new column needed**. Admin UI already writes to `google_analytics_id` (mirrored in Settings/Branding/AddTenant/EditTenant modals). Operator populates each tenant's GA4 ID via existing UI — no migration required.
+
+**Multi-tenant safety by construction**: aily's GA4 ≠ walliam's GA4 ≠ future tenant's GA4. GA4 install must read `tenant.google_analytics_id` per request, NEVER hardcode a measurement ID or fall back to a shared account. This matches the SEO-scope pattern (`seo_enabled` per tenant, no hardcoded brand branch).
+
+##### 3. Real conversion event surfaces (per operator: "don't invent a funnel")
+
+VERIFIED via `grep` of frontend form submits + API POST endpoints. These are the actual lead-capture actions users trigger on aily/walliam pages:
+
+| # | User action | Frontend | Backend endpoint | Writes to | Existing tracker/flag? |
+|---|---|---|---|---|---|
+| 1 | Contact-agent form (property + home pages) | `components/property/AgentContactForm.tsx:38` `handleSubmit` | `POST /api/walliam/contact` (route.ts:156 `leads.insert`) | `leads` | none |
+| 2 | Offer inquiry ("Book a Showing" / "Make Offer") | `components/property/OfferInquiryModal.tsx:639` | `/api/charlie/competing-listings` (context) → `/api/walliam/contact` lead insert | `leads` | none |
+| 3 | Home estimator submit (buyer) | `app/estimator/components/HomeEstimatorResults.tsx:602` `handleContactSubmit` (and duplicate at :1535 — recon UI-tab shape only, not a bug) | `/api/walliam/estimator/vip-request` | `leads` (VIP flow) | none |
+| 4 | Estimator submit (condo, buyer) | `app/estimator/components/EstimatorResults.tsx:538` (+ :1331) | same VIP flow | `leads` | none |
+| 5 | Charlie plan generated (buyer/seller plan email submit) | `app/charlie/components/PlanDocument.tsx:148` | `POST /api/charlie/lead` | `leads` (plan flow) | none |
+| 6 | Chat widget "VIP request" (unlock premium data) | `components/chat/ChatWidget.tsx:257` | `POST /api/chat/vip-request` | `vip_requests` | none |
+| 7 | Chat widget "VIP questionnaire" | `components/chat/ChatWidget.tsx:308` | `POST /api/chat/vip-questionnaire` | `vip_requests` | none |
+| 8 | Walliam-branded VIP access (auth gate on estimator/charlie premium) | `components/auth/VIPAIAccess.tsx:84` | `POST /api/walliam/charlie/vip-request` | `vip_requests` | none |
+| 9 | 01leads B2B contact (owner-promo site, `01leads.com`, NOT a tenant SEO surface) | `app/zerooneleads/contact/page.tsx:16` | `POST /api/01leads-contact` | 01leads flow | out of aily/walliam scope |
+
+**Recommended GA4 event map (from real surfaces, not invented)**:
+- `contact_agent_submit` (surface 1) — the classic property-page lead
+- `book_showing_submit` (surface 2) — offer/showing inquiry
+- `estimator_submit` (surfaces 3, 4) — same event, distinguish home/condo via param
+- `plan_generated_submit` (surface 5) — Charlie plan capture
+- `chat_vip_request` (surface 6) + `chat_vip_questionnaire` (surface 7) — chat funnel steps
+- `vip_access_grant` (surface 8) — auth-gated premium unlock
+- `page_view` — SPA-safe fire on route change (see item 4)
+
+Not recommended as GA4 events: internal admin routes (`/api/admin/*`), 01leads B2B flow (different funnel, owner-promo scope).
+
+##### 4. SPA pageview handling
+
+Next.js App Router client navigations via `<Link>` / `router.push()` do NOT auto-fire `gtag('config', ...)` on route change — GA4 only registers the initial page_view when `<Script>` first executes. Manual SPA pageview handler needed:
+- Use `usePathname()` + `useSearchParams()` in a `'use client'` component mounted in the root layout (or a dedicated `<AnalyticsProvider>`).
+- On path/query change (via `useEffect`), fire `gtag('event', 'page_view', { page_path, page_title })`.
+
+VERIFIED: no existing SPA pageview handler in the codebase — `usePathname` hits in `AdminHomesSidebar.tsx`, `ChatWidgetWrapper.tsx`, `ConditionalLayout.tsx`, `CreditSessionContext.tsx` are all unrelated to analytics.
+
+##### 5. Proposed C-UNIT-1 build scope
+
+Prerequisites (ops):
+- (a) Operator creates GA4 property for aily.ca in Google Analytics; obtains measurement ID.
+- (b) Operator inserts the measurement ID into `tenants.google_analytics_id` for aily via existing admin UI (`/admin-homes/settings` or `/admin/branding`).
+- (c) Operator repeats for walliam.ca (independent GA4 property).
+
+Build (dev):
+- (1) Server component reads `tenant.google_analytics_id` per request (via `getTenantByHost`, matches existing pattern).
+- (2) Root `app/layout.tsx` mounts `<GoogleAnalytics />` component (client, `use client`) with the tenant's measurement ID as prop. Gated on non-null ID — no ID → don't render the script tag (no tracking = no leak, no error).
+- (3) `<GoogleAnalytics>` uses `next/script` with `strategy="afterInteractive"` to load gtag.js + emit initial `gtag('config', measurementId)`.
+- (4) `<SpaPageviewTracker>` (client) uses `usePathname` + `useSearchParams` in `useEffect` to fire `gtag('event', 'page_view', ...)` on route change.
+- (5) Utility `lib/analytics/track.ts` exports `trackEvent(name, params?)` — thin wrapper around `window.gtag` that no-ops when gtag not present. Called from the 7 conversion surfaces cataloged in item 3.
+- (6) Consent Mode: default deny for EU visitors; simple approach — skip Consent Mode v2 initially, add a lightweight cookie-consent banner as a follow-up if operator needs EU coverage. Log as OPEN follow-up.
+
+Multi-tenant guarantees:
+- Every render reads `tenant.google_analytics_id` per request. No shared/hardcoded ID.
+- `<GoogleAnalytics>` renders NULL when `tenant.google_analytics_id` is NULL — walliam without a GA4 ID emits zero tracking (fail-closed, no misattribution).
+- New tenants pick up analytics by row-update (set `google_analytics_id`) — matches SEO-scope pattern.
+
+Non-blocking scope decisions (operator input):
+- Consent Mode / EU cookie banner: log as OPEN follow-up unless operator wants it in the initial ship.
+- Which of the 8 conversion actions are Google Ads conversion actions (Lane D dependency) vs GA4-only events. Recommendation: all 8 fire as GA4 events; a subset later gets tagged as Google Ads conversions once D-UNIT-3 wires the Ads customer ID (D-UNIT-2 is BLOCKED by C-UNIT-3 currently).
+
+##### 6. Verdict — status update on C-UNIT-1
+
+C-UNIT-1 status was **READY** pre-recon. Post-recon: **DB shape already in place (`google_analytics_id` column exists, admin UI already wires it)**. Blocking prerequisites are ops-only (create GA4 properties + populate `tenants.google_analytics_id`). Dev scope is well-scoped and non-invasive (root-layout gtag script + SPA pageview handler + thin `trackEvent` wrapper + 7 event-fire wirings).
+
+Alignment with existing tracker: C-UNIT-1 tracker line (`app/W-MARKETING-TRACKER.md:3645-3654`) accurately described the scope. This recon fills in the specifics (real conversion actions, per-tenant column verified present, SPA pageview quirk documented).
+
+##### 7. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_LANE-C-RECON_20260708_162113`.
+
+Every value cited above is a byte-for-byte grep/DB output this session; nothing marked "claimed, unverified" except the EU consent-mode scope decision which awaits operator input.
+
+#### C-UNIT-1 BUILD — SHIPPED (2026-07-08)
+
+GA4 + Consent Mode v2 + 7 conversion events. Per-tenant, fail-closed on NULL. Aily's `G-64C2P7MG1D` written to DB; walliam stays NULL (no property yet).
+
+##### 1. Step 1 — DB write (OPERATOR-APPROVED)
+
+Snapshot: `docs/snapshots/tenants_pre_ga4_20260708_171250.txt` — both tenants NULL pre-write.
+
+Runner: `scripts/apply-ga4-aily-id.js` — transactional (BEGIN + SET LOCAL statement_timeout=0). Pre-check confirms NULL; UPDATE 1 row; post-verify inside TX confirms `G-64C2P7MG1D`; also verifies walliam still NULL (no cross-tenant write); COMMIT.
+
+Post-COMMIT verify (separate query, outside runner):
+```
+aily.ca      google_analytics_id = G-64C2P7MG1D (matches ✓)
+walliam.ca   google_analytics_id = NULL
+```
+
+##### 2. Steps 2-5 — components + helpers
+
+- **New `lib/analytics/track.ts`** — `trackEvent(name, params?)` no-ops when `window.gtag` absent. Typed `TrackedEventName` union covers 7 conversion events + `page_view`. PII policy in header comment: never emit email/phone/name/user_id/address content typed into forms; listing metadata (public MLS data) is OK.
+- **New `components/analytics/TenantAnalytics.tsx`** (client) — wraps `<Script>` gtag load + Consent Mode v2 default (denied) + `<ConsentBanner>` + `<SpaPageviewTracker>`. **Fail-closed**: `if (!measurementId) return null` — no ID means no script, no banner, no cookies, no consent UI. Consent persisted to a first-party cookie `analytics_consent` (SameSite=Lax, 12mo, Path=/), NOT localStorage. Banner tenant-neutral: "We use analytics cookies to improve this site." Accept → `gtag('consent','update',{...:'granted'})`; Decline stays denied (cookieless ping mode). Once cookie set, banner never re-shows.
+- **`SpaPageviewTracker`** (inside `TenantAnalytics`) — `usePathname` + `useSearchParams` in `useEffect` → `gtag('event','page_view',{page_path, send_to: measurementId})`. Guarded on `typeof window.gtag === 'function'`.
+- **PII check on page_path**: property URLs are slugs like `/1300-braeside-drive-oakville-w12820708` — public listing metadata (address is on MLS + published in the sitemap). Zero user identifiers, zero email, zero session tokens, zero query params with personal data. Cache-bust `?_cb=` is the only common query param and it's a timestamp.
+- **`lib/utils/tenant-brand.ts`** extended: `getTenantByHost` SELECT adds `google_analytics_id`; `TenantContext` gains `googleAnalyticsId: string | null`. No new query — extends the existing select column list. Also verified: `getTenantContext` (the sibling function) uses same shape.
+- **`app/layout.tsx`** mounts `<TenantAnalytics measurementId={_gaMeasurementId} />` inside `<body>` before AuthProvider. `_gaMeasurementId` resolved server-side via `getTenantByHost(createClient(), headers().get("host"))`. NULL swallowed via try/catch → renders null.
+
+##### 3. Step 6 — 7 conversion events wired
+
+Every event fires ONLY after the corresponding server response resolves successfully. Zero PII in params (no email/phone/name values — only listing_id, transaction_type, is_home, estimator_kind).
+
+| # | Event name | File | Trigger |
+|---|---|---|---|
+| 1 | `contact_agent_submit` | [components/property/AgentContactForm.tsx:92](components/property/AgentContactForm.tsx#L92) | after `result.success` from submitLeadFromForm |
+| 2 | `book_showing_submit` | [components/property/OfferInquiryModal.tsx:697](components/property/OfferInquiryModal.tsx#L697) | after inquiry lead + activity submit |
+| 3 | `estimator_submit` (home) | [app/estimator/components/HomeEstimatorResults.tsx:555](app/estimator/components/HomeEstimatorResults.tsx#L555) | after `enrichSucceeded` |
+| 4 | `estimator_submit` (condo) | [app/estimator/components/EstimatorResults.tsx:507](app/estimator/components/EstimatorResults.tsx#L507) | after `enrichSucceeded` |
+| 5 | `plan_generated_submit` | [app/charlie/components/PlanDocument.tsx:157](app/charlie/components/PlanDocument.tsx#L157) | after `data.success` from `/api/charlie/lead` |
+| 6 | `chat_vip_request` | [components/chat/ChatWidget.tsx:279](components/chat/ChatWidget.tsx#L279) | after `result.success` from `/api/chat/vip-request` |
+| 7 | `chat_vip_questionnaire` | [components/chat/ChatWidget.tsx:328](components/chat/ChatWidget.tsx#L328) | after `result.success` from `/api/chat/vip-questionnaire` |
+| 8 | `vip_access_grant` | [components/auth/VIPAIAccess.tsx:89](components/auth/VIPAIAccess.tsx#L89) | after `_resp.ok` from `/api/walliam/charlie/vip-request` |
+
+Wire pattern is the same at every site: `import { trackEvent }` + `trackEvent('event_name', {...listing_metadata_only})` immediately after the success branch of the fetch/action result check. Zero user-typed content passed to gtag.
+
+##### 4. Step 7 — Smoke matrix (both tenants, fresh cookies)
+
+**aily.ca** (`google_analytics_id = G-64C2P7MG1D`):
+- Homepage returns HTTP 200. `G-64C2P7MG1D` appears 2x in SSR HTML:
+  1. `<link rel="preload" href="https://www.googletagmanager.com/gtag/js?id=G-64C2P7MG1D" as="script"/>` — Next `<Script>` preload
+  2. `measurementId":"G-64C2P7MG1D"` inside the React server component streamed payload (server → client prop for `<TenantAnalytics>`)
+- Client-side (post-hydration): `<Script>` injects the gtag tag; Consent Mode default (denied) executes BEFORE gtag config; `<ConsentBanner>` mounts because `analytics_consent` cookie is absent on fresh visit.
+- **PRE-consent cookies (fresh curl)**: NO `_ga` cookies present — Consent Mode denied blocks GA cookie creation. VERIFIED via cookie jar dump.
+
+**walliam.ca** (`google_analytics_id = NULL`):
+- Homepage returns HTTP 200.
+- **Zero `G-64C2P7MG1D` occurrences** (no aily-ID leak).
+- **Zero `googletagmanager` references**.
+- **Zero consent-mode references** (no gtag script → no consent to grant).
+- **Zero "We use analytics cookies" banner phrase** (fail-closed: no analytics = no banner).
+- Zero cookies set.
+
+**Cross-tenant leak check** (verbatim): `aily measurementId in payload: G-64C2P7MG1D` (via SSR preload URL); `walliam measurementId in payload: (not present — fail-closed correct)`. `✓ no cross-tenant leak`.
+
+**Client-side runtime behavior (documented, not curl-verifiable — flagged "claimed, unverified" until operator confirms in browser)**:
+- Fresh visit → banner shows. `document.cookie` contains no `_ga*`.
+- Click Accept → `gtag('consent','update',...:'granted')` fires; GA4 starts full mode; `_ga` cookies materialize; `analytics_consent=granted` cookie written; banner disappears.
+- Click Decline → `analytics_consent=denied` cookie written; banner disappears; GA continues in cookieless ping mode (no `_ga` cookies).
+- Route change (SPA navigation) → `gtag('event', 'page_view', {page_path})` fires.
+- Form submit success → the corresponding `trackEvent('event_name', {...})` fires; observable in GA DebugView.
+
+##### 5. Non-blocking scope decisions (deferred per operator)
+
+- **EU cookie consent styling**: current banner is functional and Consent-Mode-v2 compliant but is a simple design (dark bar, 2 buttons). Fancier UI + jurisdiction detection (e.g. only show banner for EU/UK IPs) can ship as a follow-up. Log as OPEN.
+- **Google Ads conversion tagging** (D-UNIT-2 dependency): once `google_ads_id` + `google_conversion_label` are populated per tenant, a subset of GA4 events (`contact_agent_submit`, `estimator_submit`, `plan_generated_submit`) should ALSO fire an Ads conversion. Not this dispatch — D-UNIT-2 is BLOCKED by C-UNIT-3.
+
+##### 6. Files this dispatch
+
+New:
+- `lib/analytics/track.ts` — trackEvent helper (typed)
+- `components/analytics/TenantAnalytics.tsx` — GA4 + Consent Mode v2 + SPA pageview
+- `scripts/apply-ga4-aily-id.js` — DB migration runner (transactional)
+- `docs/snapshots/tenants_pre_ga4_20260708_171250.txt` — pre-write snapshot
+
+Modified (with `.backup_C-UNIT-1_20260708_171250`):
+- `app/layout.tsx` (mounts TenantAnalytics)
+- `lib/utils/tenant-brand.ts` (extends TenantContext with googleAnalyticsId)
+- `components/property/AgentContactForm.tsx` (event 1)
+- `components/property/OfferInquiryModal.tsx` (event 2)
+- `app/estimator/components/HomeEstimatorResults.tsx` (event 3)
+- `app/estimator/components/EstimatorResults.tsx` (event 4)
+- `app/charlie/components/PlanDocument.tsx` (event 5)
+- `components/chat/ChatWidget.tsx` (events 6 + 7)
+- `components/auth/VIPAIAccess.tsx` (event 8)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_C-UNIT-1_20260708_171250`)
+
+TSC exit 0 across all edits. `.env.local` not staged. Backups untracked.
+
+##### 7. Verdict — C-UNIT-1 SHIPPED
+
+Per-tenant GA4 mounted with Consent Mode v2 posture (default denied, granted only after explicit user Accept). Fail-closed on NULL: walliam has zero tracking, zero leak. Aily fires page_views + 7 conversion events post-consent. Multi-tenant safe by construction — new tenants pick up analytics by row-update (`UPDATE tenants SET google_analytics_id = '...' WHERE domain = '...'`) via existing admin UI, no code change.
+
+**Ops next**: operator publishes to prod → visits aily.ca in a browser → sees banner → Accept → verifies DebugView receives page_view + a test conversion. That is the browser-runtime confirmation this recon flagged as "claimed, unverified".
+
+HOLD push per operator dispatch.
+
 ##### 6. Files this dispatch
 
 Modified (with `.backup_A-UNIT-3b_20260707_204503`):

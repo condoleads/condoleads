@@ -6,6 +6,7 @@ import { MessageCircle, X, Send, Loader2, User, Bot, Star } from 'lucide-react'
 import VipPrompt from './VipPrompt'
 import VipRequestForm, { VipRequestData } from './VipRequestForm'
 import { renderMessageContent } from '@/lib/utils/link-parser'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -275,6 +276,8 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       const result = await response.json()
 
       if (result.success) {
+          // C-UNIT-1 (2026-07-08): chat VIP request conversion. No PII.
+          trackEvent('chat_vip_request')
           setVipRequestId(result.requestId)
           setVipRequestStatus('pending')
           setShowVipPrompt(false)
@@ -323,6 +326,8 @@ export default function ChatWidget({ context, user }: ChatWidgetProps) {
       const result = await response.json()
 
       if (result.success) {
+        // C-UNIT-1 (2026-07-08): chat VIP questionnaire conversion. No PII.
+        trackEvent('chat_vip_questionnaire')
         setQuestionnaireSubmitted(true)
         setShowVipForm(false)
         

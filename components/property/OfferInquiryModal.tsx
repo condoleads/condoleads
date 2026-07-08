@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
 import { estimateHomeSale } from '@/app/estimator/actions/estimate-home-sale'
 import { estimateCondoSale } from '@/app/estimator/actions/estimate-condo-sale'
@@ -696,6 +697,12 @@ export default function OfferInquiryModal({
           }
         })
       }
+      // C-UNIT-1 (2026-07-08): fire GA4 conversion on SUCCESSFUL submit
+      // (lead was created above). No PII — only listing/kind metadata.
+      trackEvent('book_showing_submit', {
+        listing_id: listing.id,
+        is_sale: isSale,
+      })
       setSubmitted(true)
     } catch (error) {
       console.error('Error submitting offer inquiry:', error)
