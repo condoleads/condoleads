@@ -538,7 +538,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
       <StickyNav agentId={agent?.id} />
       
       {isHero && <div className="h-16 bg-[#060b18]" />}
-      <BuildingHero 
+      <BuildingHero
         assistantName={assistantName}
         building={building}
         slug={params.slug}
@@ -549,6 +549,7 @@ export default async function BuildingPage({ params }: { params: { slug: string 
         avgSalePrice={avgSalePrice}
         avgDaysOnMarketSale={avgDaysOnMarketSale}
         avgDaysOnMarketLease={avgDaysOnMarketLease}
+        localityName={_geoChain.muni?.name || null}
       />
           {/* Compact Agent CTA - Fixed at top for lead capture */}
         {agent && !isHero && (

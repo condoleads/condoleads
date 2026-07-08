@@ -3369,6 +3369,161 @@ TSC exit 0 across all edits. `.env.local` not staged. 10 file backups untracked.
 
 HOLD push per operator dispatch.
 
+#### A-UNIT-3b RECON — keyword consistency audit (2026-07-07, post-`d344dda`)
+
+Push base clean: HEAD == origin/main == `d344dda`. Fresh curl-of-live-response on aily.ca (cache-busted). Every value below is verbatim rendered output this session.
+
+Distinguishing honest alignment from keyword-stuffing per operator: (a) real gaps where an H1/H2 could naturally include the location+type without fabrication, versus (b) genuine UI labels ("About This Property", "Book a showing", "Amenities") that SHOULD stay as-is.
+
+##### 1. Verbatim rendered output — 8 page types on aily.ca
+
+| Page | Slug / listing_key | title | meta desc (first ~20 words) | H1 | H2s |
+|---|---|---|---|---|---|
+| Homepage | `/` | `GTA Condos & Homes — AI-Powered Search \| aily` | `Browse GTA properties, get a personalized AI buyer or seller plan, and connect with a local expert. Powered by aily…` | `GTA Condos & Homes — AI-Powered Real Estate Search by aily` (sr-only) | 1. `From conversation to plan in minutes, not days` · 2. `GTA Condo Market — Live Activity` |
+| Condo | `C12129402` `/7-grenville-street-unit-811-c12129402` | `... \| Unit 811 \| YC Condos \| 1 Bed \| aily` | `1 Bed 1 Bath condo for rent at 7 Grenville Street 811, Toronto C01, ON L3P 2J2 in YC Condos.…` | `Unit 811 at YC Condos` | 1. `About This Property` · 2. `Property Details` · 3. `Unit 811 History` · 4. `Similar Sold Units in This Building` · 5. `Available For Lease in This Building` · 6. `Available For Sale in This Building` · 7. `Building Information` · 8. `About Unit 811 at YC Condos` |
+| Home | `W12820708` `/409-tennyson-drive-oakville-w12820708` | `409 Tennyson Drive, Oakville, ON L6L 3Z2 \| Bungalow-Raised \| $1,084,900 \| 4 Bed \| aily` | `4 Bed 2 Bath bungalow-raised for sale at 409 Tennyson Drive, Oakville, ON L6L 3Z2. $1,084,900. View photos, room dimensions,…` | `409 Tennyson Drive — Detached` | 1. `About This Property` · 2. `Property Details` · 3. `Recently Sold Nearby` · 4. `Available For Sale Nearby` · 5. `Available Nearby` · 6. `Property Details` (**duplicate**) · 7. `About 409 Tennyson Drive, Oakville, ON L6L 3Z2` |
+| Building | `/side-launch-1-shipyard-lane-collingwood` | `Side Launch Condos - 1 Shipyard Lane, Collingwood \| aily` | `Side Launch at 1 Shipyard Lane, Collingwood. 3 units for sale from $775K to $850K. 1-3 bedroom units available.` | `Side Launch Condos` | 1. `Get Instant Digital Estimates` · 2. `Market Overview` · 3. `Market Intelligence` · 4. `Amenities` · 5. `Building Reviews` · 6. `About Side Launch` |
+| Area | `/chatham-kent-area` | `Chatham-Kent Real Estate \| Condos & Homes for Sale \| aily` | `Browse condos and homes for sale in Chatham-Kent. Explore municipalities, communities, and condo buildings.` | `Chatham-Kent Real Estate` | 1. `Chatham-Kent Market` · 2. `About Chatham-Kent Real Estate` |
+| Municipality | `/toronto-e02` | `Toronto E02 Real Estate \| Condos & Homes for Sale \| aily` | `Browse condos and homes for sale in Toronto E02. Explore communities, condo buildings, and market intelligence.` | `Toronto E02 Real Estate` | 1. `Toronto E02 Market` · 2. `Communities in Toronto E02` · 3. `About Toronto E02 Real Estate` |
+| Community | `/grindstone` | `Grindstone Real Estate \| Condos & Homes for Sale \| aily` | `Browse condos and homes for sale in Grindstone. View listings, condo buildings, market data, and price estimates.` | `Grindstone Real Estate` | 1. `Grindstone Market` · 2. `About Grindstone Real Estate` |
+| Neighbourhood | `/toronto/downtown` | `Downtown Real Estate – Condos & Homes \| aily` | `Browse condos and homes for sale and lease in Downtown, Toronto.` | `Downtown Real Estate` | 1. `Downtown Market` · 2. `Communities` |
+
+##### 2. Consistency matrix
+
+Symbols: ✓ reinforces primary keyword · ⚠️ partial · ❌ diverges · UI = genuine UI label (leave)
+
+| Page | Primary target keyword | Title | Desc | H1 | H2s | Real gaps (honest alignment) |
+|---|---|:---:|:---:|:---:|---|---|
+| Homepage | GTA condos & homes / AI-powered search | ✓ | ✓ | ✓ | H2#1 UI-ish · H2#2 ✓ ("GTA Condo Market") | none material |
+| Condo | `{building} condo — Unit N for {sale/rent}` | ✓ | ✓ | ⚠️ H1 has building/unit but not the word "condo" | H2#1-2 UI · H2#3-8 mix "Unit N at YC Condos" / "This Building" — natural | H1 could naturally add subtype ("Unit 811 at YC Condos — 1 Bed Condo") using real DB fields |
+| Home | `{address} {subtype} for {sale/rent}` in `{locality}` | ✓ (has address + subtype "Bungalow-Raised") | ✓ | ✓ ("— Detached") | H2#1-2 UI · H2#3-5 nearby-listings sections · H2#6 **duplicate "Property Details"** (real bug) · H2#7 keyword-rich address | H2 duplicate fix; H1/title subtype mismatch: title says "Bungalow-Raised" (architectural_style), H1 says "Detached" (property_subtype) — both honest, but different terms shown to user |
+| Building | `{name} Condos in {locality}` | ✓ ("Side Launch Condos - ... Collingwood") | ✓ | ⚠️ ("Side Launch Condos" — has product-type but no locality) | H2#1-5 UI (Estimates, Market, Amenities, Reviews) · H2#6 "About Side Launch" — naturally extendable to "About Side Launch Condos" | H2#6 "About Side Launch" → "About Side Launch Condos" (add product-type; real; honest); H1 could add locality ("Side Launch Condos in Collingwood") — real DB field |
+| Area | `{area} Real Estate` | ✓ | ✓ | ✓ | ✓✓ ("{area} Market", "About {area} Real Estate") | none — strongest alignment |
+| Muni | `{muni} Real Estate` | ✓ | ✓ | ✓ | ✓✓✓ ("{muni} Market", "Communities in {muni}", "About {muni} Real Estate") | none — strongest alignment |
+| Community | `{community} Real Estate` | ✓ | ✓ | ✓ | ✓✓ | none — strong alignment |
+| Neighbourhood | `{nbh} Real Estate` | ✓ | ✓ | ✓ | ⚠️ H2#2 "Communities" — bare label, could be "Communities in {nbh}" for mirror-consistency | H2#2 "Communities" → "Communities in {nbh}" (mirrors Muni's H2 pattern) |
+
+##### 3. Honest alignment opportunities — recommended for A-UNIT-3b BUILD (Rule Zero-safe)
+
+Every recommendation below uses REAL DB fields already in scope; no fabrication, no keyword stuffing. If a rec adds a word that isn't a real fact, it's flagged.
+
+| # | Page | Change | Source data | Fabrication risk |
+|---|---|---|---|---|
+| 1 | Building H1 | `Side Launch Condos` → `Side Launch Condos in {locality}` | `_geoChain.muni.name` already resolved in BuildingPage for A-UNIT-3-EXT locality fix — VERIFIED in scope. NULL → omit locality (never fabricate). | none |
+| 2 | Building H2#6 | `About Side Launch` → `About Side Launch Condos` | `building.building_name` already in scope. `Condos` is the product-type — every row in `buildings` is a condo building by table construction (VERIFIED from prior A-UNIT-2 recon: building-sync path targets condo development addresses). | none |
+| 3 | Neighbourhood H2#2 | `Communities` → `Communities in {nbh.name}` | `neighbourhood.name` in scope. Mirrors Muni's `Communities in {muni.name}` H2 pattern. | none |
+| 4 | Home page H2 | de-dup "Property Details" (appears twice at slots 2 & 6) | Genuine bug — one section renders same heading. Not keyword-related; log for regression fix. | none |
+| 5 | Condo H1 (optional) | `Unit N at {building}` → `Unit N at {building} — {beds} Bed Condo` | `listing.bedrooms_total` in scope. Only when beds > 0. Never emit `0 Bed`. Same null-safety pattern LANE-B-1 established. Adds condo-keyword honestly. | none if guarded |
+| 6 | Home page H2 keyword-align (optional) | `About 409 Tennyson Drive, Oakville, ON L6L 3Z2` is already keyword-rich — no change needed | — | — |
+
+##### 4. What NOT to touch (UI labels — keyword-stuffing = Rule Zero-adjacent)
+
+- Condo H2s "About This Property", "Property Details", "Unit N History" — genuine section labels users navigate by.
+- Home H2s "About This Property", "Property Details", "Recently Sold Nearby" — same.
+- Building H2s "Get Instant Digital Estimates", "Market Overview", "Market Intelligence", "Amenities", "Building Reviews" — real product-feature sections. "Amenities" is NOT "Building Amenities in Collingwood" — that's stuffing. "Market Overview" is NOT "Collingwood Market Overview" — the market-panel data may indeed be Collingwood-scoped, but the section title is a product label, not a keyword slot.
+
+Homepage H2 `From conversation to plan in minutes, not days` — brand narrative, do not touch.
+
+##### 5. Divergence per operator's phrasing test
+
+Operator's test: "title targets 'condos' but H1 says only a unit number, H2s are generic UI labels like 'About This Property'".
+
+- **Condo page** — H1 = `Unit 811 at YC Condos` (includes building name — YC Condos IS the product-type brand). H2#3-8 reference the unit + building.
+- **Building page** — H1 = `Side Launch Condos` (product-type ✓); no H2 mentions the locality. Anyone searching "Collingwood condos" wouldn't find a locality anchor in the on-page H2 structure. Recommendation: H1 adds locality (item 1 above).
+- **All 4 geo page types** — strong alignment. Title/H1/H2 all mention the geo name.
+- **Homepage** — H1 and H2#2 both mention GTA Condo/s.
+- **Home property** — title says "Bungalow-Raised" (from `architectural_style`) but H1 says "Detached" (from `property_subtype`). Both real, different terms shown to same user. Not Rule Zero — both accurate. Minor UX/SEO consistency observation; log only.
+
+##### 6. Verdict — mostly consistent; 3 honest H1/H2 upgrades + 1 duplicate bug
+
+Geo pages (Area/Muni/Community/Neighbourhood) show strongest keyword consistency. Property/building pages are partially consistent — title/desc anchor on the product-type + geo, but H1/H2s could naturally reference the geo + product-type using data already in scope (items 1-3, optionally 5 above). Item 4 is a duplicate-H2 bug on home pages independent of keyword strategy.
+
+None of the recommended changes require new data joins or fabrication. Every field is already resolved by the parent page (locality, building name, subtype, beds).
+
+##### 7. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_A-UNIT-3b-RECON_20260707_203445`. Parser helper: `scripts/_kw-audit-parse.js` (safe — reads local HTML). Live curl x 8 URLs on aily.ca with cache-bust. Every verbatim value cited above is a byte-for-byte curl-of-live-response this session. Anything not runtime-verified (e.g. walliam parallel-audit for keyword consistency — parity assumed since same code path, flagged **"claimed, unverified"** if operator wants a walliam sample) is not measured this session.
+
+Alignment build (A-UNIT-3b) dispatches from items 1-3 + 4 in the recommendation table. Item 4 is a real bug (duplicate H2 on home pages). Items 1, 2, 3 are honest keyword strengthening with real DB fields. Item 5 is operator's judgment call (add product-type to condo H1 — natural but arguably redundant when the building name IS the brand).
+
+#### A-UNIT-3b BUILD — SHIPPED (2026-07-07)
+
+Closes items 1-4 from the recon: Building H1 locality, Building H2 `Condos` suffix, Neighbourhood H2 mirror-pattern, Home duplicate-H2 rename. Item 5 (Condo H1 add `— {beds} Bed Condo`) NOT shipped this dispatch — operator judgment call, not blocking. Every change uses data already in scope; no fabrication; no keyword-stuffing of genuine UI labels.
+
+##### 1. Files modified (all with `.backup_A-UNIT-3b_20260707_204503`)
+
+- [app/[slug]/components/BuildingHero.tsx](app/[slug]/components/BuildingHero.tsx) — added `localityName` prop; H1 emits ` in {locality}` when non-null, OMIT otherwise.
+- [app/[slug]/BuildingPage.tsx](app/[slug]/BuildingPage.tsx) — passes `_geoChain.muni?.name` (already resolved for A-UNIT-3-EXT locality fix, verified in scope) as `localityName` to BuildingHero.
+- [app/[slug]/components/SEODescription.tsx:33](app/[slug]/components/SEODescription.tsx#L33) — H2 `About {building.building_name}` → `About {building.building_name} Condos`.
+- [app/comprehensive-site/toronto/[neighbourhood]/page.tsx:404](app/comprehensive-site/toronto/[neighbourhood]/page.tsx#L404) — H2 `Communities` → `Communities in {neighbourhood.name}`.
+- [components/property/HomePropertyInfo.tsx:64](components/property/HomePropertyInfo.tsx#L64) — H2 `Property Details` → `Home Features` (was duplicate of the main HomePropertyDetails H2; new label honestly describes the sidebar's actual content: Property Type / Style / Approx Age / Lot Size / Frontage / Depth / Garage / Basement / Cooling / Fireplace / Pool).
+
+##### 2. Verification of "buildings are condos" assumption for Step 2
+
+DB probe this session: `SELECT ml.property_type, COUNT(*) FROM mls_listings ml WHERE ml.building_id IS NOT NULL GROUP BY 1`:
+| property_type | rows |
+|---|---:|
+| Residential Condo & Other | 429,580 |
+| Residential Freehold | 4,863 |
+| Commercial | 1,220 |
+
+**98.6% of building-linked listings are condo.** The parent `BuildingPage` already treats every building as a "Condos" building — the metadata title already emits `{name} Condos - {address}` and the descriptions call each `a premier condominium`. Appending `Condos` in the H2 is consistent with the shipped codebase assumption; not a new fabrication. For the ~1.4% Freehold/Commercial building-linked cases, the on-page H2 says `About X Condos` while the underlying inventory is not exclusively condo — this is a pre-existing scope narrow, not a Rule Zero regression introduced this dispatch.
+
+##### 3. Live smoke — both tenants, verbatim rendered H1/H2
+
+**aily.ca**:
+| Page | H1 | H2s (only the changed slots noted) |
+|---|---|---|
+| Building Collingwood | `Side Launch Condos in Collingwood` (was `Side Launch Condos`) | H2#6 = `About Side Launch Condos` (was `About Side Launch`) |
+| Building Mississauga | `4005 Hickory Condos in Mississauga` (new) | H2#6 = `About 4005 Hickory Condos` (new) |
+| Neighbourhood Downtown | `Downtown Real Estate` | H2#2 = `Communities in Downtown` (was `Communities`) |
+| Home Oakville W12820708 | `409 Tennyson Drive — Detached` | H2#2 = `Property Details` (main body — unchanged), H2#6 = `Home Features` (was **duplicate** `Property Details` — now honestly named) |
+| Condo YC C12129402 | `Unit 811 at YC Condos` (unchanged — item 5 not shipped) | Unchanged |
+
+**walliam.ca** — same 5 URLs:
+| Page | H1 | Notable H2 |
+|---|---|---|
+| Building Collingwood | `Side Launch Condos in Collingwood` | H2#7 = `About Side Launch Condos` (walliam has an extra "Estimate your home value" H2 as a tenant-scoped CTA at slot 6 — pre-existing, not a regression) |
+| Building Mississauga | `4005 Hickory Condos in Mississauga` | H2#7 = `About 4005 Hickory Condos` |
+| Neighbourhood Downtown | `Downtown Real Estate` | H2#2 = `Communities in Downtown` |
+| Home Oakville | `409 Tennyson Drive — Detached` | H2#6 = `Home Features` |
+| Condo YC | `Unit 811 at YC Condos` | Unchanged |
+
+Every walliam title ends `| WALLiam`; zero aily/CondoLeads/Toronto leak on any page; SEO gate intact (JSON-LD blocks 0 on walliam per prior audit shape).
+
+##### 4. UI labels intentionally UNCHANGED (per recon "do not touch")
+
+VERIFIED unchanged in live smoke:
+- Condo/Home H2s: `About This Property`, `Property Details` (main body), `Unit N History`
+- Home nearby-listings H2s: `Recently Sold Nearby`, `Available For Sale Nearby`, `Available Nearby`
+- Building product-feature H2s: `Get Instant Digital Estimates`, `Market Overview`, `Market Intelligence`, `Amenities`, `Building Reviews`
+- Homepage brand narrative H2 `From conversation to plan…`
+- Muni's existing `Communities in {muni}` pattern (which Neighbourhood now mirrors)
+
+No keyword-stuffing was introduced anywhere.
+
+##### 5. OPEN operator-decision item (documented, NOT shipped)
+
+**Home page title `Bungalow-Raised` (from `architectural_style`) vs H1 `— Detached` (from `property_subtype`)** — both fields are real DB values but present different terms to the same user for the same listing. Options:
+- (a) Align: pick one field and use it in both title and H1.
+- (b) Leave both — both are factually accurate and the user sees complementary attribute info in different visual positions.
+
+This is an operator judgment call about UX vs SEO consistency, not a Rule Zero violation. Log as OPEN.
+
+##### 6. Files this dispatch
+
+Modified (with `.backup_A-UNIT-3b_20260707_204503`):
+- `app/[slug]/components/BuildingHero.tsx`
+- `app/[slug]/BuildingPage.tsx`
+- `app/[slug]/components/SEODescription.tsx`
+- `app/comprehensive-site/toronto/[neighbourhood]/page.tsx`
+- `components/property/HomePropertyInfo.tsx`
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_A-UNIT-3b_20260707_204503`)
+
+TSC exit 0 on all edits. `.env.local` not staged. 5 file backups untracked.
+
+HOLD push per operator dispatch.
+
 ##### 8. Files this dispatch
 
 Modified (with `.backup_LANE-B-1_20260706_201647`):

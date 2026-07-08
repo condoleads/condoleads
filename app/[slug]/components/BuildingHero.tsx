@@ -14,6 +14,11 @@ interface BuildingHeroProps {
   avgSalePrice: number
   avgDaysOnMarketSale: number
   avgDaysOnMarketLease: number
+  // A-UNIT-3b (2026-07-07): real municipality name resolved by parent
+  // (BuildingPage) via community_id → municipality_id → municipalities.name.
+  // NULL when the FK chain doesn't resolve → the " in {locality}" suffix
+  // OMITTED (never "in null", never a hardcoded fallback). Rule Zero #1.
+  localityName?: string | null
 }
 
 export default function BuildingHero({
@@ -27,16 +32,16 @@ export default function BuildingHero({
   avgSalePrice,
   avgDaysOnMarketSale,
   avgDaysOnMarketLease,
+  localityName = null,
 }: BuildingHeroProps) {
   return (
     <section className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-24 w-full">
-        {/* LANE-B-1 (2026-07-06): keyword-strengthened H1 — appends "Condos"
-            keyword when the building has any active or closed inventory
-            (verified via count props). Name-only H1 previously carried no
-            product-type keyword despite title/description saying "Condos". */}
+        {/* LANE-B-1 (2026-07-06): keyword-strengthened H1 — appends "Condos".
+            A-UNIT-3b (2026-07-07): also appends " in {locality}" when the
+            municipality resolves. Real DB field via 2-hop join; NULL → omit. */}
         <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold mb-4 tracking-tight">
-          {building.building_name} Condos
+          {building.building_name} Condos{localityName ? ` in ${localityName}` : ''}
         </h1>
         <p className="text-lg sm:text-xl md:text-2xl opacity-90 mb-8 sm:mb-12">
           {building.canonical_address}

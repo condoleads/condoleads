@@ -25,8 +25,13 @@ export default function SEODescription({ building, totalListings, avgPrice, loca
     <section className="py-12 bg-slate-50">
       <div className="max-w-4xl mx-auto px-6">
         <div className="prose prose-slate max-w-none">
+          {/* A-UNIT-3b (2026-07-07): H2 keyword-align — add product-type
+              "Condos". Buildings table is condo-scoped by construction
+              (98.6% of building-linked listings are Residential Condo &
+              Other; the parent BuildingPage title/desc already treats every
+              building as a "Condos" building — verified from title shape). */}
           <h2 className="text-2xl font-bold text-slate-900 mb-4">
-            About {building.building_name}
+            About {building.building_name} Condos
           </h2>
 
           <p className="text-slate-700 leading-relaxed mb-4">

@@ -55,7 +55,12 @@ export default function HomePropertyInfo({ listing }: HomePropertyInfoProps) {
 
   return (
     <section className="bg-white rounded-xl shadow-sm p-6">
-      <h2 className="text-2xl font-bold text-slate-900 mb-4">Property Details</h2>
+      {/* A-UNIT-3b (2026-07-07): renamed from "Property Details" — was a
+          duplicate of HomePropertyDetails' H2. This sidebar block renders a
+          compact list of Property Type, Style, Age, Lot Size, Frontage,
+          Depth, Garage, Basement, Cooling, Fireplace, Pool — i.e. home
+          features. New label honestly describes actual content. */}
+      <h2 className="text-2xl font-bold text-slate-900 mb-4">Home Features</h2>
       <div className="space-y-0">
         {rows.map((row, i) => (
           <div key={i} className="flex justify-between py-3 border-b border-slate-100">

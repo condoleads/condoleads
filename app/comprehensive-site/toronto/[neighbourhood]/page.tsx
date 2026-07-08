@@ -398,7 +398,10 @@ export default async function NeighbourhoodPage({ params }: Props) {
       {/* Communities */}
       {communities && communities.length > 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 border-t border-gray-100">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Communities</h2>
+          {/* A-UNIT-3b (2026-07-07): H2 keyword-align — mirrors Municipality
+              page's "Communities in {muni}" pattern. Real neighbourhood name
+              in scope; NULL never happens (n row required for page render). */}
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Communities in {neighbourhood.name}</h2>
           <div className="flex flex-wrap gap-2">
             {communities.map((c: any) => (
               <Link key={c.id} href={`/${c.slug}`}
