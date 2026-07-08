@@ -131,7 +131,6 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
               <Link
                 key={`dev-${development.id}`}
                 href={`/${development.slug}`}
-                target="_blank"
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-purple-500"
               >
                 <div className="relative h-48 overflow-hidden">
@@ -197,7 +196,6 @@ export function BuildingsGrid({ buildings, developments = [], agentName, isTeamS
               <Link
                 key={building.id}
                 href={`/${building.slug}`}
-                target="_blank"
                 className="group bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-200 hover:border-blue-500"
               >
                 {/* Building Photo */}

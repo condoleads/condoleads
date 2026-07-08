@@ -657,8 +657,6 @@ export default function EstimatorResults({
                   {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
                      <a                 
                       href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
                       className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                     >
                       View Property Details →
@@ -670,8 +668,6 @@ export default function EstimatorResults({
                           unparsed_address: comp.unparsedAddress,
                           listing_key: comp.listingKey
                         })}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         View Property Details →
@@ -1018,8 +1014,6 @@ export default function EstimatorResults({
                     {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
                       <a
                         href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         View Property Details →
@@ -1031,8 +1025,6 @@ export default function EstimatorResults({
                           unparsed_address: comp.unparsedAddress,
                           listing_key: comp.listingKey
                         })}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         View Property Details →
@@ -1160,8 +1152,6 @@ export default function EstimatorResults({
                       {comp.buildingSlug && comp.unitNumber && comp.listingKey && (
                         <a
                           href={`/${comp.buildingSlug}-unit-${comp.unitNumber}-${comp.listingKey.toLowerCase()}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                         >
                           View Property Details →
@@ -1266,7 +1256,7 @@ export default function EstimatorResults({
                   )
                   const tileClasses = 'flex bg-white border border-slate-200 hover:border-slate-300 rounded-xl overflow-hidden transition-colors'
                   return (
-                    <a key={cl.id ?? idx} href={href} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                    <a key={cl.id ?? idx} href={href} className={tileClasses + ' cursor-pointer'}>
                       {Inner}
                     </a>
                   )

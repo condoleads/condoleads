@@ -147,8 +147,8 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                 {block.listings.map((listing: any) => {
                   const url = listing._slug || ('/' + (listing.listing_key || '').toLowerCase())
                   return (
-                    <div key={listing.id} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px', display: 'flex', gap: 14, alignItems: 'center', cursor: 'pointer' }}
-                      onClick={() => window.open(url, '_blank')}>
+                    <a key={listing.id} href={url} style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px', display: 'flex', gap: 14, alignItems: 'center', cursor: 'pointer' }}>
                       <div style={{ width: 72, height: 72, borderRadius: 10, background: 'rgba(255,255,255,0.08)', flexShrink: 0, overflow: 'hidden' }}>
                         {(listing.media?.[0]?.media_url || listing.media?.[0]?.url) && (
                           <img src={listing.media[0].media_url || listing.media[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -169,6 +169,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                       </div>
                       <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0 }}>ΓåÆ</div>
                     </div>
+                    </a>
                   )
                 })}
               </div>
@@ -188,7 +189,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                         <div>
-                          <a href={b.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>{b.buildingName}</a>
+                          <a href={b.url} style={{ color: '#fff', fontWeight: 700, fontSize: 14, textDecoration: 'none' }}>{b.buildingName}</a>
                           {b.yearBuilt && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginLeft: 8 }}>Built {b.yearBuilt}</span>}
                         </div>
                         {b.activeCount > 0 && <span style={{ background: '#10b981', color: '#fff', borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>{b.activeCount} active</span>}
@@ -217,7 +218,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px 14px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginRight: 8 }}>#{r.rank}</span>
-                      <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>{r.entity_name}</a>
+                      <a href={r.url} style={{ color: '#fff', fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>{r.entity_name}</a>
                     </div>
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       {r.median_price && <span style={{ color: '#60a5fa', fontSize: 12, fontWeight: 600 }}>{fmt(r.median_price, '$')}</span>}
@@ -237,7 +238,7 @@ export default function ResultsPanel({ analytics, listingGroups, comparables, ge
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {items.slice(0, 5).map((r: any, i: number) => (
                       <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 8, padding: '8px 12px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', fontSize: 13, textDecoration: 'none' }}>{r.entity_name}</a>
+                        <a href={r.url} style={{ color: '#fff', fontSize: 13, textDecoration: 'none' }}>{r.entity_name}</a>
                         <div style={{ display: 'flex', gap: 10 }}>
                           {r.median_price && <span style={{ color: '#60a5fa', fontSize: 12 }}>{fmt(r.median_price, '$')}</span>}
                           {r.price_reduction_rate && <span style={{ color: '#ef4444', fontSize: 12 }}>{r.price_reduction_rate.toFixed(0)}% reduced</span>}

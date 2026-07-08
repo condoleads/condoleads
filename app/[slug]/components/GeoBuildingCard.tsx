@@ -47,7 +47,7 @@ export default function GeoBuildingCard({ building, index = 0 }: GeoBuildingCard
       <style dangerouslySetInnerHTML={{ __html: STYLES }} />
       <div style={{ animation:'fadeSlideUp 0.45s ease both', animationDelay:`${index*55}ms` }}>
         <a
-          href={href} target="_blank" rel="noopener noreferrer"
+          href={href}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
           className="block bg-white select-none"

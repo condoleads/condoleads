@@ -225,15 +225,13 @@ export default async function CondoMarketActivity() {
                 display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14,
               }}>
                 {buildings.map(b => (
-                  // W-FEATURED-CONDOS UNIT 54 (2026-06-30): target=_blank +
-                  // rel="noopener noreferrer" — keeps the homepage open while
-                  // visitor explores a building; noopener required for security
-                  // (blocks window.opener access from opened tab).
+                  // LANE-B-2 (2026-07-08): stripped target=_blank + noopener —
+                  // internal same-site nav; rel=noopener on same-origin links
+                  // strips the referrer chain and breaks Google rank-flow /
+                  // referrer attribution. Same-tab is the crawl-safe default.
                   <Link
                     key={b.slug}
                     href={`/${b.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     style={{
                       position: 'relative', display: 'block',
                       borderRadius: 12, overflow: 'hidden',
@@ -311,13 +309,11 @@ export default async function CondoMarketActivity() {
                 borderRadius: 12, overflow: 'hidden',
               }}>
                 {communities.map((c, i) => (
-                  // W-FEATURED-CONDOS UNIT 54 (2026-06-30): same target=_blank +
-                  // noopener noreferrer pattern as the building cards.
+                  // LANE-B-2 (2026-07-08): stripped target=_blank + noopener
+                  // (see building-card note above) — same-origin, keep rank-flow.
                   <Link
                     key={c.slug}
                     href={`/${c.slug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
                     style={{
                       display: 'grid', gridTemplateColumns: '24px minmax(0, 1fr) auto',
                       alignItems: 'center', gap: 10,

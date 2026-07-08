@@ -713,6 +713,9 @@ export default async function BuildingPage({ params }: { params: { slug: string 
               totalListings={allListings.length}
               avgPrice={avgSalePrice}
               localityName={_geoChain.muni?.name || null}
+              geoChain={_geoChain}
+              crawlListings={[...activeSales, ...activeRentals]}
+              buildingSlug={building.slug || params.slug}
             />
           </div>
           

@@ -732,8 +732,6 @@ export default function HomeEstimatorResults({
                           unparsed_address: comp.unparsedAddress,
                           listing_key: comp.listingKey
                         })}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         View Property Details →
@@ -1012,7 +1010,7 @@ export default function HomeEstimatorResults({
                 const accentClass = showIncome ? ' border-l-2 border-l-indigo-500' : ''
                 const tileClasses = baseClasses + accentClass
                 return slug ? (
-                  <a key={idx} href={slug} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                  <a key={idx} href={slug} className={tileClasses + ' cursor-pointer'}>
                     {Inner}
                   </a>
                 ) : (
@@ -1210,8 +1208,6 @@ export default function HomeEstimatorResults({
                           unparsed_address: comp.unparsedAddress,
                           listing_key: comp.listingKey
                         })}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                       >
                         View Property Details →
@@ -1333,8 +1329,6 @@ export default function HomeEstimatorResults({
                       {comp.listingKey && comp.unparsedAddress && (
                         <a
                           href={generateHomePropertySlug({ unparsed_address: comp.unparsedAddress, listing_key: comp.listingKey })}
-                          target="_blank"
-                          rel="noopener noreferrer"
                           className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                         >
                           View Property Details →
@@ -1467,7 +1461,7 @@ export default function HomeEstimatorResults({
                   const accentClass = showIncome ? ' border-l-2 border-l-indigo-500' : ''
                   const tileClasses = baseClasses + accentClass
                   return slug ? (
-                    <a key={cl.id ?? idx} href={slug} target="_blank" rel="noopener noreferrer" className={tileClasses + ' cursor-pointer'}>
+                    <a key={cl.id ?? idx} href={slug} className={tileClasses + ' cursor-pointer'}>
                       {Inner}
                     </a>
                   ) : (

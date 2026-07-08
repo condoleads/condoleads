@@ -21,8 +21,9 @@ function domColor(dom: number): string {
 
 export default function BuildingCard({ building: b }: Props) {
   return (
+    // LANE-B-2 (2026-07-08): anchor-wrap for crawlable in-app nav.
+    <a href={`/${b.slug}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
     <div
-      onClick={() => window.open(`/${b.slug}`, '_blank')}
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -62,5 +63,6 @@ export default function BuildingCard({ building: b }: Props) {
       </div>
       <div style={{ color: 'rgba(255,255,255,0.2)', fontSize: 18, flexShrink: 0, padding: '0 12px', display: 'flex', alignItems: 'center' }}>→</div>
     </div>
+    </a>
   )
 }

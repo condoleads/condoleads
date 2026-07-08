@@ -110,10 +110,8 @@ export default function UnitHistory({ history, unitNumber, buildingSlug, isHome 
                 )}
               </div>
               {propertyUrl && (
-                <a 
-                  href={propertyUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
+                <a
+                  href={propertyUrl}
                   className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                 >
                   View Property Details →

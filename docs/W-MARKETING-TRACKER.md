@@ -4607,5 +4607,251 @@ TSC exit 0.
 - `docs/W-MARKETING-TRACKER.md` (this POST-PUSH VERIFY entry)
 - Backup: `docs/W-MARKETING-TRACKER.md.backup_W-A-UNIT-4c-VERIFY_20260703_150116`
 
+#### LANE-B INTERLINK RECON — architecture + current-vs-missing map (2026-07-08, post-`81cf6c2`)
+
+Push base clean: HEAD == origin/main == `81cf6c2`, 0 ahead. Read-only recon: mapped SSR HTML `<a href>` inventory on every page type via curl; grepped every internal-link component's source. Every value cited below is a byte-for-byte curl/grep this session.
+
+##### 1. Live SSR link inventory (aily.ca, cache-busted)
+
+Total distinct `<a href="/…">` in the SSR-rendered HTML per page type, counted this session:
+
+| Page type | Total internal | Notable link classes present |
+|---|---:|---|
+| Homepage `/` | **95** | `/toronto` ×19 (nbh hub) · muni slugs (oakville, mississauga, whitby, markham) · community slugs (bay-street-corridor, banbury-don-mills, willowdale-east) · nbh slugs (kensington-chinatown, regent-park, annex, cabbagetown) · via `<CondoMarketActivity>` |
+| Area (Chatham-Kent) | **101** | ~100 property slugs (listing cards anchor-wrapped) + siblings via `<GeoInterlinking>` |
+| Municipality (Toronto E02) | **42** | `/toronto-area` up + community slugs down (east-end-danforth, the-beaches, woodbine-corridor) + `toronto-c0N` sibling munis via GeoInterlinking |
+| Community (Grindstone) | **34** | `/halton-area`, `/burlington` up + 7 listing anchors + sibling communities via GeoInterlinking |
+| Neighbourhood (Downtown) | **46** | `/toronto`, muni slugs, community grid, ~30 listing anchors |
+| **Building (Side Launch)** | **4** ❌ | **ONLY `/about`, `/contact`, `/privacy`, `/terms` — all footer. Zero community/muni/area up-links in body. Zero unit-listing anchors** |
+| Condo property (`C12129402`) | 10 | community x3 (via PropertySEO up-link chain), muni x1, area x1, building slug x2, 1 unit-slug, footer x4 |
+| Home property (Oakville W12205517) | 10 | community x2, muni x2, area x2 (via HomePropertySEO), footer x4 |
+
+##### 2. Source-code shape per page-type
+
+**Listing pages (condo + home)**:
+- **Up-links** — PROPERTY: [components/property/PropertySEO.tsx:104-116](components/property/PropertySEO.tsx#L104) chains community → municipality → area (`<Link href="/…">` each). Shipped LANE-B-1 (f946ff7). HOME: [components/property/HomePropertySEO.tsx:68-80](components/property/HomePropertySEO.tsx#L68) has the same chain. Both verified live.
+- **Building link** — Condo has 2 anchors: PropertySEO body link ([PropertySEO.tsx:81](components/property/PropertySEO.tsx#L81)) + PropertyDetails "View All Units in This Building →" ([components/property/PropertyDetails.tsx:167](components/property/PropertyDetails.tsx#L167)). Home listings don't have a building (freehold).
+- **Similar listings** — mounted via `<SimilarListings>` at [PropertyPageClient.tsx:180](app/property/[id]/PropertyPageClient.tsx#L180) + [HomePropertyPageClient.tsx:159](app/property/[id]/HomePropertyPageClient.tsx#L159). Renders `HomeListingCard` for freehold (anchor-wrapped — LANE-B-1 verified) or `ListingCard` for condo. **[app/[slug]/components/ListingCard.tsx:160](app/[slug]/components/ListingCard.tsx#L160) still uses `onClick={window.open(propertyUrl, '_blank')}` — the LANE-B-1 fix targeted GeoListingCard + HomeListingCard but MISSED ListingCard. Condo → similar-condo navigation is NOT crawlable.** Sibling-of-fixed-bug — the same class LANE-B-1-VERIFY closed.
+- **Transaction history unit-slug links** — [components/property/UnitHistory.tsx:114](components/property/UnitHistory.tsx#L114) uses `<a href={propertyUrl}>` — crawlable ✓.
+
+**Building page** (Side Launch verified live):
+- **Down-links to unit listings** — `<ListingSection>` at [app/[slug]/components/ListingSection.tsx:165](app/[slug]/components/ListingSection.tsx#L165) mounts `<ListingCard>` per active sale/rental. `ListingCard` uses window.open (same finding as above). **The entire building → its-own-listings link path is NOT crawlable.** Live probe confirms zero listing anchors in the Side Launch SSR HTML.
+- **Up-links to community/muni/area** — ONLY through the breadcrumb (`_bpBcItems` at [BuildingPage.tsx:487-491](app/[slug]/BuildingPage.tsx#L487)). SEODescription body has ZERO body-anchors up. Live confirmed: 0 up-links in body.
+- **Sibling buildings / development** — none surfaced. Development link present when building.development_id is set (via breadcrumb).
+
+**Geo pages (Area/Muni/Community/Neighbourhood)**:
+- **Down-links** — 
+  - Area → Municipalities: [app/[slug]/AreaPage.tsx:383](app/[slug]/AreaPage.tsx#L383) `<GeoInterlinking links={municipalityLinks}>`. Sibling areas via 2nd GeoInterlinking at :400.
+  - Muni → Communities: [MunicipalityPage.tsx:345](app/[slug]/MunicipalityPage.tsx#L345) `<CommunityCard>` grid + [:366](app/[slug]/MunicipalityPage.tsx#L366) `<GeoInterlinking links={siblingMunicipalities}>`.
+  - Muni → Neighbourhoods: **ZERO** — no code path linking down to neighbourhoods from municipality pages.
+  - Community → Buildings: **ZERO** — no `<BuildingCard>` down-link section on community pages. Only 7 listing anchors + sibling communities.
+  - Community → Sibling Communities: [CommunityPage.tsx:315](app/[slug]/CommunityPage.tsx#L315) `<GeoInterlinking links={siblingCommunities}>`.
+  - Neighbourhood → Communities: [neighbourhood/page.tsx:404](app/comprehensive-site/toronto/[neighbourhood]/page.tsx#L404) `<Link href="/{c.slug}">` grid (A-UNIT-3b: "Communities in {n.name}").
+  - Neighbourhood → Municipalities: [neighbourhood/page.tsx:367](app/comprehensive-site/toronto/[neighbourhood]/page.tsx#L367) top-bar `<Link href="/{m.slug}">` (only when municipalities.length > 1).
+- **Up-links** — every geo up-link surface: via breadcrumb (`<Breadcrumb items=...>` component uses real `<Link>` per item). Live verified 1-2 up-links per page rendered as anchors.
+
+**Homepage**:
+- `<HomePageComprehensiveV2>` (aily's live layout via homepage_layout=v3) mounts `<CondoMarketActivity>` ([HomePageComprehensiveV2.tsx:112](components/HomePageComprehensiveV2.tsx#L112)) which renders featured buildings + communities with `<Link href="/{slug}" target="_blank" rel="noopener noreferrer">` at [CondoMarketActivity.tsx:232,316](components/home/CondoMarketActivity.tsx#L232) — this is 95 live crawlable links today.
+- `topAreas` prop passed to [HomePageComprehensiveClient.tsx:643](components/HomePageComprehensiveClient.tsx#L643) but the client component body only renders `<WalliamHero>` + `<HowItWorks>` — **`topAreas` is a dead prop, never rendered as any UI**. That's why the homepage's 95 links come entirely from CondoMarketActivity, not from a "top areas" section.
+- `<BuildingsGrid>` ([components/home/BuildingsGrid.tsx:131,197](components/home/BuildingsGrid.tsx#L131)) has crawlable `<Link href="/{slug}" target="_blank">` for developments + buildings — used inside `<GeoPageTabs>` (not homepage) per grep.
+
+**Contextual body links**: no property/geo/building page has in-content prose links to related pages (e.g. `"...in downtown Toronto"` linking to `/downtown`). This is the classic content-linking gap.
+
+##### 3. From-page → To-page matrix (live-verified)
+
+Symbols: ✓ = crawlable `<a href>` present in SSR HTML · ⚠️ = present but flawed (rel=noopener,noreferrer, or window.open onClick) · ❌ = missing entirely
+
+| From ↓ / To → | Home | Area | Muni | Community | Nbh | Building | Development | Listing (property) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| Homepage | — | ⚠️ indirect (nbh → muni breadcrumb path) | ✓ some munis via CMA | ✓ x few via CMA | ✓ many via CMA (target=_blank+noopener) | ⚠️ via CMA + BuildingsGrid (target=_blank+noopener) | ⚠️ via BuildingsGrid | ❌ 0 |
+| Area | ✓ breadcrumb | — | ✓ GeoInterlinking child | ❌ (no direct area → community) | ❌ | ❌ | ❌ | ✓ ~100 listing anchors |
+| Muni | ✓ breadcrumb | ✓ | — | ✓ CommunityCard grid | ❌ | ❌ | ❌ | ✓ ~30 listing anchors |
+| Community | ✓ breadcrumb | ✓ | ✓ | ✓ GeoInterlinking siblings | ❌ | ❌ | ❌ | ✓ 7 listing anchors |
+| Neighbourhood | ✓ breadcrumb (/toronto) | ❌ | ✓ (top-bar when multi) | ✓ Community grid | — | ❌ | ❌ | ✓ ~30 listing anchors |
+| **Building** | ❌ 0 | ❌ 0 | ❌ 0 | ❌ 0 | ❌ 0 | — | ❌ 0 | ❌ 0 (ListingCard uses window.open — non-crawlable) |
+| Condo property | ❌ 0 | ✓ x1 | ✓ x1 | ✓ x3 via PropertySEO | ❌ 0 | ✓ x2 via body + PropertyDetails | ⚠️ via PropertySEO if dev present | ⚠️ SimilarListings uses ListingCard (non-crawlable for condo) |
+| Home property | ❌ 0 | ✓ x2 via HomePropertySEO | ✓ x2 | ✓ x2 | ❌ 0 | — (freehold) | ❌ | ⚠️ SimilarListings uses HomeListingCard (crawlable ✓) |
+
+##### 4. Highest-value missing links (crawl + rank flow gaps)
+
+Ordered by impact on crawl coverage + rank distribution (not by scope size):
+
+1. **BUILDING → its unit listings** — CRITICAL. Building pages emit ZERO crawlable listing anchors (all 4 SSR links go to footer). Every unit shown on a building page is discoverable via anchor only after JS hydration, which crawlers weight less. Root: [app/[slug]/components/ListingCard.tsx:160](app/[slug]/components/ListingCard.tsx#L160) — the same `<article onClick={window.open}>` pattern LANE-B-1-VERIFY closed on GeoListingCard/HomeListingCard, but was missed on ListingCard (the condo card). Sibling-of-fixed-bug.
+
+2. **BUILDING → community/muni/area** — Building page has ZERO body up-links to parent geo entities; only the breadcrumb chains up. PropertySEO's up-link chain is analogous (PropertySEO on condo has community/muni/area anchors from LANE-B-1). SEODescription (building body) does not.
+
+3. **CONDO listing → similar condos** — SimilarListings uses `<ListingCard>` for condo listings. Same non-crawlable pattern as #1. Home listings use `<HomeListingCard>` which is crawlable.
+
+4. **Homepage → geo pages via `topAreas`** — `topAreas` is fetched and passed as prop, then dropped on the floor by the client component body. Dead prop. Would add up to 6 area anchors to homepage if rendered as a grid/list.
+
+5. **CondoMarketActivity `target="_blank" rel="noopener noreferrer"` on internal links** — sibling of LANE-B-1's CommunityCard fix. The `rel="noopener noreferrer"` on internal same-site anchors breaks the referrer chain that Google uses to attribute link equity. Renders 90+ internal anchors on aily's homepage — every one has the rank-chain break.
+
+6. **Muni → Neighbourhood** — no code path emits neighbourhood anchors from municipality pages. Neighbourhoods are reachable from Homepage + Community grid (`Communities in {nbh}`) + Property SEO (never), but Municipality pages don't surface them at all. Some crawl-orphaning risk for less-linked neighbourhoods.
+
+7. **Community → Buildings-in-community** — CommunityPage renders sibling-community links but no `<BuildingCard>` grid for buildings within the community. Missing crawl path Community → Building.
+
+##### 5. Intentional NOT gaps (don't fabricate)
+
+- Building → 1000s of prior units (transaction history) — small history slice link is enough; do NOT emit a full-blast list.
+- Homepage → every one of ~100K listings — link-dilution; unnecessary.
+- Cross-tenant links — never (multi-tenant rule).
+- External social links (target=_blank + noopener LEGITIMATELY needed) — not internal; different rel-attribute rule.
+
+##### 6. Orphan check — page types reachable only via sitemap?
+
+VERIFIED via inbound-link presence in SSR HTML across the 8 sampled URLs:
+
+| Target page type | Any inbound link from sampled pages? | Orphan risk |
+|---|:---:|---|
+| Homepage | ✓ (all breadcrumbs point Home) | none |
+| Area | ✓ from Community + Muni + Property SEO + Home SEO (breadcrumb + body) | none |
+| Municipality | ✓ from Area + Community + Nbh + Property + Home + Homepage | none |
+| Community | ✓ from Muni + Nbh + Property + Home + Homepage | none |
+| Neighbourhood | ✓ from Homepage + Community grid on Nbh (self-loop) | ⚠️ light coverage — reachable but only via Homepage's featured-nbh set + not from Muni/Area at all |
+| Building | ✓ from Property + Homepage CMA + BuildingsGrid | ⚠️ inbound OK, outbound BROKEN (item 1) |
+| Development | ⚠️ inbound only from Homepage CMA + PropertySEO (rare) | some coverage |
+| Listing (property) | ✓ from Area/Muni/Community/Nbh geo cards + Similar/Available cards on other listings | none for HOMES; ⚠️ for condos where ListingCard is non-crawlable |
+
+**No true orphans.** But "Building → outbound" is a semantic dead-end (item 1 in gaps): every building has ~10 listings and 1 breadcrumb chain, and outbound crawl budget is 4 links (footer). That's a rank-flow dead-end.
+
+##### 7. Proposed Lane B build shape (from this map, not fabricated)
+
+Ordered by expected impact:
+
+1. **Fix `ListingCard.tsx`** — apply the same anchor-wrap primary-nav pattern LANE-B-1-VERIFY applied to GeoListingCard + HomeListingCard. Restores crawlable unit navigation on building pages AND similar-condo navigation on condo property pages. Single-file fix.
+2. **Building body up-link chain** — mirror PropertySEO/HomePropertySEO's `{community} Neighbourhood` block on `<SEODescription>` (already receives `localityName` prop; extend props to also receive community + muni + area). Adds crawlable up-links from every building.
+3. **Community → Buildings-in-community grid** — add a `<BuildingsInCommunity>` section on CommunityPage (already has `buildingCount`; would need a light `getBuildingsForCommunity(id, limit)` fetch). Crawlable `<Link href="/{building.slug}">` per row.
+4. **Muni → Neighbourhoods** — when a municipality has neighbourhoods, render them as a linked list (mirrors "Communities in {muni}" pattern on Neighbourhood page).
+5. **Homepage → TopAreas** — render the already-fetched `topAreas` prop as a `<Link>` grid on `HomePageComprehensiveClient`/`V2`. Dead-prop revival.
+6. **CondoMarketActivity `rel="noopener noreferrer"`** — drop on internal same-site links (target=_blank alone is fine — the flag that broke rank chain was noopener noreferrer). Sibling of LANE-B-1 CommunityCard fix. Same shape.
+7. **Contextual body links** — later phase; prose-embedded internal links in PropertySEO / SEODescription / HomePropertySEO where they naturally fit (e.g. "in {community}" is already there; making the community name a link inside the "About Unit 811 at YC Condos" paragraph would add editorial-style link signals).
+
+##### 8. Files this dispatch
+
+Read-only recon only. No code files touched. No SQL write. Tracker append (this section). Backup: `docs/W-MARKETING-TRACKER.md.backup_LANE-B-INTERLINK-RECON_20260708_193302`. Live curls x 8 URLs on aily.ca with cache-bust. Every quantitative claim (link counts per page type) is a byte-for-byte curl-of-live-response this session. Grep + line-numbers cite the specific source files. Anything not runtime-verified (e.g. rendering behavior on a Municipality page with neighbourhoods — this session sampled Toronto E02 which does have neighbourhoods; the "Muni → Nbh = 0 code path" claim is source-verified) is flagged "claimed, unverified" at the specific finding.
+
+**Verdict**: Lane B has a strong foundation (geo down-cascade + breadcrumbs + LANE-B-1 anchor-wrap), one MISSED sibling (ListingCard), and one systemic dead-end (Building → outbound). Build order 1-2-3 above is the highest-leverage tightening. Not comprehensive until item 1 (ListingCard) is closed — it's a live sibling of an already-fixed bug class.
+
+#### LANE-B BUILD 1 — sibling closure + noopener strip + building dead-end fix (2026-07-08)
+
+Closes the three highest-impact gaps from the LANE-B-INTERLINK-RECON verdict: (1) missed `ListingCard` sibling of the LANE-B-1 anchor-wrap fix, (2) `rel="noopener noreferrer"` + `target="_blank"` on internal same-site nav (rank-flow / referrer chain break), (3) building page semantic dead-end (zero body up-links, zero crawlable listing anchors in prose). Base commit `81cf6c2` (live on origin/main). All hrefs come from real DB rows via `generatePropertySlug` / resolved `_geoChain` — never fabricated. Backups made on every touched file before edit.
+
+##### Step 0 — Exhaustive sweep (INTERNAL nav classification)
+
+`Grep target="_blank"|rel="noopener|window.open` across `**/*.{ts,tsx}`. Every hit classified into three buckets — INTERNAL (fix), EXTERNAL (leave), or ADMIN/DASHBOARD-CARVE (leave per CLAUDE.md).
+
+INTERNAL — needing fix this dispatch (all closed below):
+- `app/[slug]/components/ListingCard.tsx:160` — condo card `onClick={window.open}` (Step 1)
+- `app/[slug]/components/BuildingCard.tsx:21` — geo variant, `target="_blank"`
+- `app/[slug]/components/GeoBuildingCard.tsx:50` — `target="_blank" rel="noopener noreferrer"`
+- `app/[slug]/components/GeoInterlinking.tsx:38` — `target="_blank" rel="noopener noreferrer"` (Link)
+- `components/home/CondoMarketActivity.tsx:232, 316` — 2 sites, homepage building + community grids (~90 anchors)
+- `components/home/BuildingsGrid.tsx:131, 197` — 2 sites (development + building cards)
+- `components/home-page/BrowseListingsView.tsx:89` — QUICK_CHIPS geo anchors
+- `app/charlie/components/ActiveListingCard.tsx:46,53` — card wrapper `window.open` (Step 1 batch)
+- `app/charlie/components/BuildingCard.tsx:23` — card wrapper `window.open` (Step 1 batch)
+- `app/charlie/components/ComparableCard.tsx:117-135` — card wrapper `window.open` (Step 1 batch)
+- `app/charlie/components/ResultsPanel.tsx:151, 191, 220, 240` — listing tile onClick + 3 entity/building anchors
+- `app/estimator/components/EstimatorResults.tsx:660, 673, 1021, 1034, 1163, 1269` — 6 sites (comp tiles, condo)
+- `app/estimator/components/HomeEstimatorResults.tsx:735, 1015, 1213, 1336, 1470` — 5 sites (comp tiles, home)
+- `components/property/UnitHistoryModal.tsx:241` — condo unit history "View Property" links
+- `components/property/UnitHistory.tsx:115` — condo unit history rail
+- `components/property/HomeAddressHistoryModal.tsx:186` — home address history "View Details"
+
+EXTERNAL — intentionally NOT touched:
+- Social share: `app/[slug]/components/SocialShare.tsx:20`, `app/[slug]/components/ShareSaveButtons.tsx:70,74,78`
+- Walkscore: `app/[slug]/components/WalkScore.tsx:27,28,50`
+- WhatsApp: `app/team/[slug]/page.tsx:173`, `components/dashboard/LeadDetailClient.tsx:177`
+- Cross-domain (01leads → aily.ca): `app/zerooneleads/components/{Solution,Nav,Hero,FooterCTA}.tsx`
+- Landing marketing pages: `components/landing/{LandingHeader,HeroSection,DemoEmbed,PreviewGenerator}.tsx` (external condoleads.ca subdomain CTAs)
+- Anthropic console: `app/admin/branding/BrandingClient.tsx:438`
+
+ADMIN / DASHBOARD (CLAUDE.md carve — System 1 admin never touched):
+- `app/admin-homes/leads/[id]/LeadWorkbenchClient.tsx:41,171,272,292,721`
+- `components/admin-homes/AdminHomesLeadsClient.tsx:680,702`
+- `components/admin-homes/lead-workbench/{VipRequestsTab,PlanRenderer,ActivityTab}.tsx`
+- `components/admin/buildings/ViewBuildingsTab.tsx:416`
+- `components/dashboard/{WorkingDocView,CharlieLeadEstimate}.tsx`
+- `components/navigation/SearchBar.tsx:123` (user-driven search)
+- `app/[slug]/components/{Home,Geo}ListingCard.tsx` — ActionPill Book-Visit `window.open` on secondary explicit UX button (main card already anchor-wrapped in LANE-B-1); `preventDefault + stopPropagation` on the pill keeps the outer anchor from firing simultaneously.
+
+##### Step 1 — ListingCard (missed sibling) + Charlie card triplet
+
+Same anchor-wrap primary-nav shape LANE-B-1 established on GeoListingCard + HomeListingCard: extract `href` at top; card renders inside `<a href={href}>` wrapper. Same-tab default; Ctrl/Cmd/middle-click preserves new-tab. Nested pills stopPropagation.
+
+- `app/[slug]/components/ListingCard.tsx` — wrapped `<article>` with `<a href={propertyUrl}>` (line 157-161 + closing 468-470). Removed `onClick={window.open}`.
+- `app/charlie/components/ActiveListingCard.tsx` — extracted `cardInner` variable; conditionally wraps in anchor when computed `_href` exists. Preserves mouse-enter/leave handlers on inner div.
+- `app/charlie/components/BuildingCard.tsx` — wrapped outer `<div>` with anchor around `/${b.slug}`.
+- `app/charlie/components/ComparableCard.tsx` — same `_cmpHref` + `cardInner` pattern as ActiveListingCard.
+
+##### Step 2 — `rel="noopener noreferrer" target="_blank"` strip on internal nav
+
+Removes the referrer chain break Google uses to attribute link equity. `target="_blank"` alone would be crawl-safe; `noopener/noreferrer` is not. Applied consistently to every internal-nav site from Step 0.
+
+- `app/[slug]/components/BuildingCard.tsx` — stripped `target="_blank"`.
+- `app/[slug]/components/GeoBuildingCard.tsx` — stripped both attrs on main card anchor.
+- `app/[slug]/components/GeoInterlinking.tsx` — stripped both attrs on `<Link>`.
+- `components/home/CondoMarketActivity.tsx` — 2 sites (building grid + community list). Comments annotated with LANE-B-2 note.
+- `components/home/BuildingsGrid.tsx` — 2 sites (dev + building `<Link>`).
+- `components/home-page/BrowseListingsView.tsx` — QUICK_CHIPS strip.
+- `app/charlie/components/ResultsPanel.tsx` — 3 `<a>` sites stripped; listing tile refactored to real anchor wrapper.
+- `app/estimator/components/EstimatorResults.tsx` — 6 sites stripped.
+- `app/estimator/components/HomeEstimatorResults.tsx` — 5 sites stripped.
+- `components/property/UnitHistoryModal.tsx` — condo unit history "View Property" link (kept `onClick stopPropagation` for modal-close prevention).
+- `components/property/UnitHistory.tsx` — condo unit history rail.
+- `components/property/HomeAddressHistoryModal.tsx` — home address history "View Details" (kept `onClick stopPropagation`).
+
+##### Step 3 — Building dead-end fix (up-link chain + crawlable listings)
+
+`app/[slug]/components/SEODescription.tsx`: added `geoChain`, `crawlListings`, `buildingSlug` props. Renders inside the existing prose section:
+- **Up-link chain paragraph** ("Explore more real estate in the wider area: {Community}, {Muni} and the {Area} area.") — each entity is a real `<Link href={realSlug}>`. NULL levels silently omitted (community-only, muni-only, or empty all render cleanly).
+- **Units for Sale at {building}** — bulleted `<Link>` list, real `generatePropertySlug` hrefs (same helper `ListingCard` uses; single source). Filters active `For Sale` with `listing_key` present; caps at 8 to prevent link-dilution.
+- **Units for Lease at {building}** — same shape, `For Lease` filter.
+
+`app/[slug]/BuildingPage.tsx`: passes `geoChain={_geoChain}` (existing resolver — buildings.community_id → community → muni → area, with real slugs), `crawlListings={[...activeSales, ...activeRentals]}`, `buildingSlug={building.slug || params.slug}`. No new DB fetch — `_geoChain` and `activeSales/activeRentals` were already in scope.
+
+##### Step 4 — TSC + local smoke on both tenants
+
+- TSC clean (aily env): 0 errors.
+- TSC clean (post-additional-file-strip): 0 errors.
+- **aily smoke — `/70-princes-street-toronto-c08`**: 0 `target="_blank"` / `rel="noopener"` in HTML. Up-link chain present (2 occurrences = SSR + RSC payload). "Units for Sale at" + "Units for Lease at" sections rendered. Real unit anchors: `/70-princes-street-toronto-c08-unit-701-c13245942` (etc.). Confirmed byte-for-byte in curl output.
+- **walliam smoke — `/70-princes-street-toronto-c08`**: 0 `target="_blank"` / `rel="noopener"`. Up-link chain present with real slugs: `/waterfront-communities-c8`, `/toronto-c08`, `/toronto-area`. Crawlable listings section silent-omit (walliam scope had 0 active listings on this building — silent omit is the intended NULL branch).
+- **walliam homepage smoke**: 0 `target="_blank"` / `rel="noopener"` in HTML.
+
+##### Step 5 — Post-fix Step 0 re-sweep (zero internal-nav crawl-breaks)
+
+Repeat grep across `**/*.{ts,tsx}`. All remaining hits classified:
+- External (social, WalkScore, WhatsApp, zerooneleads → aily, landing marketing, Anthropic console) — leave.
+- Admin / dashboard / navigation (CLAUDE.md carve or user-driven interactive) — leave.
+- Property card ActionPill "Book Visit" (`Home/Geo ListingCard`) — secondary explicit new-tab UX; main card already anchor-wrapped (LANE-B-1).
+- Comment references + verification scripts (`scripts/_links-verify-render.ts`, `buyer-narration-verify.ts`, `buyer-chunk4-verify.ts`) — regex matchers, not runtime code.
+
+**Zero INTERNAL-nav crawl-blocking `window.open` / `noopener` / `target="_blank"` remain.** Certification evidence.
+
+##### Files this dispatch
+
+Modified (each with `.backup_LANE-B-2_20260708_*` on-disk):
+- `app/[slug]/components/ListingCard.tsx`
+- `app/[slug]/components/BuildingCard.tsx`
+- `app/[slug]/components/GeoBuildingCard.tsx`
+- `app/[slug]/components/GeoInterlinking.tsx`
+- `app/[slug]/components/SEODescription.tsx`
+- `app/[slug]/BuildingPage.tsx`
+- `app/charlie/components/ActiveListingCard.tsx`
+- `app/charlie/components/BuildingCard.tsx`
+- `app/charlie/components/ComparableCard.tsx`
+- `app/charlie/components/ResultsPanel.tsx`
+- `components/home/CondoMarketActivity.tsx`
+- `components/home/BuildingsGrid.tsx`
+- `components/home-page/BrowseListingsView.tsx`
+- `components/property/UnitHistoryModal.tsx`
+- `components/property/UnitHistory.tsx`
+- `components/property/HomeAddressHistoryModal.tsx`
+- `app/estimator/components/EstimatorResults.tsx`
+- `app/estimator/components/HomeEstimatorResults.tsx`
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_LANE-B-BUILD-1_20260708_201200`)
+
+**HOLD PUSH** — commit staged locally only. Push withheld pending operator review.
+
 
 

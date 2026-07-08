@@ -155,9 +155,14 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
   const propertyUrl = generatePropertySlug(listing, buildingSlug)
 
   return (
-    <article 
+    // LANE-B-2 (2026-07-08): anchor-wrap primary-nav — same shape LANE-B-1
+    // applied to GeoListingCard + HomeListingCard. Card click becomes the
+    // anchor's default nav (same-tab; Ctrl/Cmd/middle-click preserves
+    // new-tab). Nested pills already stopPropagation. Restores crawlable
+    // building → listings + condo → similar-condo pathways.
+    <a href={propertyUrl} className="block no-underline text-inherit h-full">
+    <article
       className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col cursor-pointer"
-      onClick={() => window.open(propertyUrl, '_blank')}
     >
       {/* Image Carousel */}
       <div className="relative h-48 bg-slate-200 flex-shrink-0 overflow-hidden">
@@ -461,5 +466,6 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
             currentListingId={listing.id}
           />
     </article>
+    </a>
   )
 }

@@ -89,8 +89,6 @@ export default function BrowseListingsView() {
           <a
             key={chip.href}
             href={chip.href}
-            target="_blank"
-            rel="noopener noreferrer"
             style={{
               padding: '9px 18px',
               borderRadius: 999,

@@ -1,25 +1,62 @@
+import Link from 'next/link'
 import { Building } from '@/lib/types/building'
 import { buildLocalityPhrase } from '@/lib/utils/locality-phrase'
+import { generatePropertySlug } from '@/lib/utils/slugs'
+
+type GeoNode = { name: string; slug: string } | null
+interface CrawlListing {
+  listing_key?: string | null
+  unparsed_address?: string | null
+  unit_number?: string | null
+  list_price?: number | null
+  transaction_type?: string | null
+}
 
 interface SEODescriptionProps {
   building: Building
   totalListings: number
   avgPrice: number
-  // LANE-B-2 (2026-07-07): real locality resolved by parent via
-  // buildings.community_id → communities.municipality_id → municipalities.name.
-  // NULL when unresolvable; every locality-scoped phrase in this component
-  // omits or falls back cleanly. Never emits "Toronto" as a fabricated
-  // default (prior hardcodes at :34/:42/:55/:59/:60/:62 were Rule Zero #1
-  // — verified live on non-Toronto buildings).
   localityName?: string | null
+  // LANE-B-2 (2026-07-08): dead-end fix. Parent resolves the full geo
+  // chain once (buildings.community_id → community → muni → area, with
+  // slugs) — passed here so the body can emit real up-link anchors up to
+  // the community / muni / area page. NULL levels → silently omitted.
+  // Never fabricate slugs; every href comes from a verified row.
+  geoChain?: { community: GeoNode; muni: GeoNode; area: GeoNode }
+  // LANE-B-2: raw active listings on this building. Slugs computed here
+  // via the same generatePropertySlug helper used across the app
+  // (canonical single source). Silent-omit when list is empty. Capped in
+  // the render below to avoid link-dilution.
+  crawlListings?: CrawlListing[]
+  buildingSlug?: string
 }
 
-export default function SEODescription({ building, totalListings, avgPrice, localityName = null }: SEODescriptionProps) {
+const CRAWL_MAX_PER_SECTION = 8
+
+export default function SEODescription({
+  building,
+  totalListings,
+  avgPrice,
+  localityName = null,
+  geoChain,
+  crawlListings,
+  buildingSlug,
+}: SEODescriptionProps) {
   const priceFormatted = avgPrice > 0 ? `$${Math.round(avgPrice / 1000)}K` : 'various price points'
-  // LANE-B-2: use the shared helper so the phrase is skipped when the
-  // canonical address already contains the locality (avoids doublings).
   const localityPhrase = buildLocalityPhrase(building.canonical_address, localityName)
   const localityDistrict = localityName || building.city_district || null
+
+  // LANE-B-2: crawlable listing anchors split by transaction. Slugs from
+  // the same generator used everywhere else — never fabricated. Cap per
+  // section to preserve link-equity flow (avoid link-dilution).
+  const _forSale = (crawlListings || [])
+    .filter(l => l.transaction_type === 'For Sale' && l.listing_key)
+    .slice(0, CRAWL_MAX_PER_SECTION)
+  const _forLease = (crawlListings || [])
+    .filter(l => l.transaction_type === 'For Lease' && l.listing_key)
+    .slice(0, CRAWL_MAX_PER_SECTION)
+
+  const _hasUpLinks = !!(geoChain && (geoChain.community || geoChain.muni || geoChain.area))
 
   return (
     <section className="py-12 bg-slate-50">
@@ -68,6 +105,70 @@ export default function SEODescription({ building, totalListings, avgPrice, loca
             can help you navigate the market and find the perfect unit to match your needs. Contact us today for a free consultation
             and market analysis.
           </p>
+
+          {_hasUpLinks && (
+            <p className="text-slate-700 leading-relaxed mt-4">
+              Explore more real estate in the wider area:
+              {geoChain?.community && (
+                <> <Link href={`/${geoChain.community.slug}`} className="text-blue-700 hover:underline">{geoChain.community.name}</Link></>
+              )}
+              {geoChain?.muni && (
+                <>{geoChain?.community ? ',' : ''} <Link href={`/${geoChain.muni.slug}`} className="text-blue-700 hover:underline">{geoChain.muni.name}</Link></>
+              )}
+              {geoChain?.area && (
+                <>{(geoChain?.community || geoChain?.muni) ? ' and the' : ''} <Link href={`/${geoChain.area.slug}`} className="text-blue-700 hover:underline">{geoChain.area.name}</Link> area</>
+              )}
+              .
+            </p>
+          )}
+
+          {_forSale.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Units for Sale at {building.building_name}
+              </h3>
+              <ul className="list-disc list-inside space-y-1">
+                {_forSale.map(l => {
+                  const href = generatePropertySlug(
+                    { unparsed_address: l.unparsed_address, listing_key: l.listing_key, unit_number: l.unit_number },
+                    buildingSlug,
+                  )
+                  const label = l.unit_number
+                    ? `Unit ${l.unit_number}${l.list_price ? ` — $${l.list_price.toLocaleString()}` : ''}`
+                    : (l.unparsed_address?.split(',')[0] || `Listing ${l.listing_key}`)
+                  return (
+                    <li key={l.listing_key || href}>
+                      <Link href={href} className="text-blue-700 hover:underline">{label}</Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+
+          {_forLease.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Units for Lease at {building.building_name}
+              </h3>
+              <ul className="list-disc list-inside space-y-1">
+                {_forLease.map(l => {
+                  const href = generatePropertySlug(
+                    { unparsed_address: l.unparsed_address, listing_key: l.listing_key, unit_number: l.unit_number },
+                    buildingSlug,
+                  )
+                  const label = l.unit_number
+                    ? `Unit ${l.unit_number}${l.list_price ? ` — $${l.list_price.toLocaleString()}/mo` : ''}`
+                    : (l.unparsed_address?.split(',')[0] || `Listing ${l.listing_key}`)
+                  return (
+                    <li key={l.listing_key || href}>
+                      <Link href={href} className="text-blue-700 hover:underline">{label}</Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
 
           <div className="mt-8 pt-8 border-t border-slate-300">
             <h3 className="text-lg font-semibold text-slate-900 mb-3">

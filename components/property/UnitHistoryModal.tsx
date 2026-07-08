@@ -238,7 +238,7 @@ export default function UnitHistoryModal({
                           )}
                         </div>
                         {propertyUrl && (
-                          <a href={propertyUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline">
+                          <a href={propertyUrl} onClick={(e) => e.stopPropagation()} className="mt-3 block text-center text-sm font-semibold text-blue-600 hover:text-blue-800 hover:underline">
                             View Property Details →
                           </a>
                         )}

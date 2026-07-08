@@ -183,8 +183,6 @@ export default function HomeAddressHistoryModal({
                             </span>
                             <a
                               href={detailUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
                               className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
                               onClick={(e) => e.stopPropagation()}
                             >

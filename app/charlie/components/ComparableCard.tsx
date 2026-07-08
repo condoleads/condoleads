@@ -114,30 +114,17 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
   const tierLabel = validTier ? labelMap[validTier] : null
   const tierColor = validTier ? TIER_COLORS[validTier] : null
 
-  const handleClick = () => {
-    // W-CHARLIE-FINETUNE-FIX (2026-06-14): delegate slug build to
-    // lib/utils/property-slug — single source so email + lead-page tile
-    // builders produce byte-identical hrefs. Helper's behavior was
-    // byte-verified against the original inline logic across 16 fixtures
-    // (scripts/_slug-byte-test.js) before this refactor.
-    // W-CHARLIE-BUYER-INCHAT-FIX (2026-06-15): use the normalized
-    // dual-shape locals (defined at the top of the component) so the
-    // buyer snake_case shape resolves a slug too — previously only
-    // c.camelCase reads fed the slug builder, which returned null
-    // on buyer comps and made tiles non-clickable.
-    const slug = buildPropertySlug({
-      listingKey,
-      unparsedAddress,
-      propertySubtype,
-      unitNumber,
-    })
-    if (!slug) return
-    window.open('/' + slug, '_blank')
-  }
+  // LANE-B-2 (2026-07-08): compute slug once; anchor-wrap for crawl.
+  const _cmpSlug = buildPropertySlug({
+    listingKey,
+    unparsedAddress,
+    propertySubtype,
+    unitNumber,
+  })
+  const _cmpHref = _cmpSlug ? '/' + _cmpSlug : null
 
-  return (
+  const cardInner = (
     <div
-      onClick={handleClick}
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -216,4 +203,13 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
       </div>
     </div>
   )
+
+  if (_cmpHref) {
+    return (
+      <a href={_cmpHref} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+        {cardInner}
+      </a>
+    )
+  }
+  return cardInner
 }

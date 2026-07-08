@@ -32,25 +32,21 @@ function domColor(dom: number | undefined): string {
 }
 
 export default function ActiveListingCard({ listing: l }: Props) {
-  const handleClick = () => {
-    // W-CHARLIE-FINETUNE-FIX (2026-06-14): see ComparableCard.tsx for the
-    // same delegation pattern. snake_case fields mapped to the helper's
-    // camelCase interface.
-    const slug = buildPropertySlug({
-      listingKey: l.listing_key,
-      unparsedAddress: l.unparsed_address,
-      propertySubtype: l.property_subtype,
-      unitNumber: l.unit_number,
-    })
-    if (!slug) return
-    window.open('/' + slug, '_blank')
-  }
+  // LANE-B-2 (2026-07-08): compute slug up front, wrap in <a href> for
+  // crawlable in-app nav. Same shape LANE-B-1 applied to Geo/Home listing
+  // cards. Missing listing_key → no anchor (renders plain div).
+  const _slug = buildPropertySlug({
+    listingKey: l.listing_key,
+    unparsedAddress: l.unparsed_address,
+    propertySubtype: l.property_subtype,
+    unitNumber: l.unit_number,
+  })
+  const _href = _slug ? '/' + _slug : null
 
   const age = l.approximate_age || (l.year_built ? `Built ${l.year_built}` : null)
 
-  return (
+  const cardInner = (
     <div
-      onClick={handleClick}
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.08)',
@@ -112,4 +108,13 @@ export default function ActiveListingCard({ listing: l }: Props) {
       </div>
     </div>
   )
+
+  if (_href) {
+    return (
+      <a href={_href} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+        {cardInner}
+      </a>
+    )
+  }
+  return cardInner
 }
