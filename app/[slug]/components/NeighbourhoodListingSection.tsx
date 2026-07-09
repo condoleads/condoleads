@@ -288,10 +288,15 @@ export default function NeighbourhoodListingSection({
         </div>
       )}
       {!selectedIsHome && (
+        // LANE-B-REGRESSION-FIX (2026-07-09): thread tenantId so the modal
+        // routes to /api/walliam/estimator/session (tenant-aware). Without
+        // it, modal falls to legacy /api/estimator/session which requires a
+        // host-resolved agentId and errors with "Agent ID required" on
+        // tenant hosts (aily, walliam). Matches GeoListingSection.
         <EstimatorBuyerModal isOpen={modalOpen} onClose={() => setModalOpen(false)}
           listing={selectedListing} buildingName={(selectedListing as any)?.building_name || selectedListing?.unparsed_address || ''}
           buildingId={selectedListing?.building_id || ''} type={modalType === 'rent' ? 'lease' : 'sale'}
-          exactSqft={modalExactSqft} agentId={agentId} />
+          exactSqft={modalExactSqft} agentId={agentId} tenantId={tenantId} />
       )}
       {selectedIsHome && (
         <HomeEstimatorBuyerModal isOpen={modalOpen} onClose={() => setModalOpen(false)}

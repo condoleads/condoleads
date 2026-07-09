@@ -111,7 +111,7 @@ export default function ActiveListingCard({ listing: l }: Props) {
 
   if (_href) {
     return (
-      <a href={_href} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+      <a href={_href} target="_blank" rel="noopener" style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
         {cardInner}
       </a>
     )

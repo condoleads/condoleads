@@ -139,6 +139,13 @@ export default async function DevelopmentPage({ params, development }: Developme
   const host = headersList.get('host') || ''
   const serverSupabase = createClient()
   const { displayAgent, isTeamSite } = await getDisplayAgentForDevelopment(host, development.id)
+  // LANE-B-REGRESSION-FIX (2026-07-09): resolve tenantId so the condo
+  // estimator modal below the listings routes to the tenant-aware API
+  // instead of the legacy /api/estimator/session. NULL on non-tenant
+  // hosts (legacy agent domains); modal falls back to the legacy path
+  // there — no change in that branch.
+  const { getCurrentTenantId } = await import('@/lib/utils/tenant-resolver')
+  const tenantId = await getCurrentTenantId()
   // W-MARKETING A-UNIT-1b post-close (2026-07-01): tolerate null displayAgent.
   // Mirrors BuildingPage:315 pattern. On comprehensive tenants (aily), the
   // shared getAgentFromHost() returns null because aily's agent link lives
@@ -375,6 +382,7 @@ export default async function DevelopmentPage({ params, development }: Developme
               developmentName={development.name}
               developmentAddresses={addresses}
               agentId={agent?.id || ''}
+              tenantId={tenantId || undefined}
             />
           </div>
 

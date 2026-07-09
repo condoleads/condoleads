@@ -277,10 +277,11 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
         geoType="community"
       />
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
-        <GeoMarketActivity geoType="community" geoId={community.id} geoName={community.name} />
-
-        <div className="mt-8">
+        {/* LANE-B-REGRESSION-FIX (2026-07-09): listings above market
+            panel. Users came to see for-sale/for-lease first; the SSR
+            market data panel (A-UNIT-4a) is supporting content. Pure
+            render-order move — no data/logic change. */}
+        <div>
           <GeoPageTabs
             geoType="community"
             geoId={community.id}
@@ -292,6 +293,11 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
             counts={counts}
             buildingsTitle={"Buildings in " + community.name}
           />
+        </div>
+
+        <div className="mt-8">
+          {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+          <GeoMarketActivity geoType="community" geoId={community.id} geoName={community.name} />
         </div>
 
         {isHero && (

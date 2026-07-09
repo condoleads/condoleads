@@ -350,10 +350,8 @@ export default async function AreaPage({ area }: AreaPageProps) {
       />
       <div className="max-w-7xl mx-auto px-4 py-8">
 
-        {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
-        <GeoMarketActivity geoType="area" geoId={area.id} geoName={area.name} />
-
-        <div className="mt-8">
+        {/* LANE-B-REGRESSION-FIX (2026-07-09): listings above market panel. */}
+        <div>
           <GeoPageTabs
             geoType="area"
             geoId={area.id}
@@ -367,6 +365,11 @@ export default async function AreaPage({ area }: AreaPageProps) {
             condoCounts={condoCounts}
             buildingsTitle="Buildings"
           />
+        </div>
+
+        <div className="mt-8">
+          {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+          <GeoMarketActivity geoType="area" geoId={area.id} geoName={area.name} />
         </div>
 
         {isHero && (

@@ -22,7 +22,7 @@ function domColor(dom: number): string {
 export default function BuildingCard({ building: b }: Props) {
   return (
     // LANE-B-2 (2026-07-08): anchor-wrap for crawlable in-app nav.
-    <a href={`/${b.slug}`} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+    <a href={`/${b.slug}`} target="_blank" rel="noopener" style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
     <div
       style={{
         background: 'rgba(255,255,255,0.04)',

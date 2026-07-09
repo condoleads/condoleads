@@ -142,7 +142,7 @@ export default function GeoListingCard({
             pattern which was crawler-only, not the human click target.
             Nested buttons (photo nav, action pills) already call
             preventDefault + stopPropagation so they don't fire the anchor. */}
-        <a href={propertyUrl} className="block no-underline text-inherit">
+        <a href={propertyUrl} target="_blank" rel="noopener" className="block no-underline text-inherit">
         <article
           onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
           onMouseEnter={() => { setIsHovered(true); if (!allPhotosLoaded) loadAllPhotos() }}

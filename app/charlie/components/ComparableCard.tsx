@@ -206,7 +206,7 @@ export default function ComparableCard({ comparable: c, isLease = false, sourceT
 
   if (_cmpHref) {
     return (
-      <a href={_cmpHref} style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
+      <a href={_cmpHref} target="_blank" rel="noopener" style={{ display: 'block', color: 'inherit', textDecoration: 'none' }}>
         {cardInner}
       </a>
     )

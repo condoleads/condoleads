@@ -13,6 +13,12 @@ interface DevelopmentListingsProps {
   developmentName: string
   developmentAddresses: string
   agentId: string
+  // LANE-B-REGRESSION-FIX (2026-07-09): tenantId threaded so the condo
+  // estimator modal below routes to the tenant-aware endpoint instead of
+  // the legacy /api/estimator/session (which requires agentId and errors
+  // "Agent ID required" when host-based lookup returns null on a tenant
+  // host). DevelopmentPage passes tenantId in scope.
+  tenantId?: string
 }
 
 type TabType = 'for-sale' | 'for-lease' | 'sold' | 'leased'
@@ -25,7 +31,8 @@ export default function DevelopmentListings({
   developmentId,
   developmentName,
   developmentAddresses,
-  agentId
+  agentId,
+  tenantId,
 }: DevelopmentListingsProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const [selectedListing, setSelectedListing] = useState<any>(null)
@@ -323,6 +330,7 @@ export default function DevelopmentListings({
           buildingId={selectedListing.building_id}
           buildingSlug={selectedListing.building_slug}
           agentId={agentId}
+          tenantId={tenantId}
           exactSqft={null}
         />
       )}

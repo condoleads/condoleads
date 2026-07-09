@@ -4970,5 +4970,282 @@ Modified (each with `.backup_LANE-B-BUILD-2_20260709_155000`):
 
 **HOLD PUSH** — commit staged locally only. Push withheld pending operator review.
 
+#### LANE-B REGRESSION DIAGNOSIS — 6 issues (2026-07-09) — READ-ONLY
+
+Read-only diagnosis dispatch. No source edits, no commit. Every finding sourced from grep + code read + DB probe (this session) or explicitly flagged "claimed, unverified." Fixes are coordinated for the follow-on build, not one-at-a-time. Backup: `docs/W-MARKETING-TRACKER.md.backup_LANE-B-REGRESSION-DIAGNOSIS_20260709_170000`.
+
+##### Ranked severity
+
+| Sev | Issue | Nature | Origin |
+|---|---|---|---|
+| **3 — functional break** | #3 estimator button navigates instead of firing | Regression | LANE-B BUILD 1 (`c2578ee`) |
+| **3 — functional break** | #2 "Agent ID required" on nbh + development pages | Pre-existing | pre-LANE-B |
+| **4 — UX regression** | #4 card new-tab replaced by same-tab | Regression | LANE-B-1 (design decision at the time) + BUILD 1 (`c2578ee`) |
+| **4 — UX / layout** | #6 SSR analytics panel above listings on geo pages | Pre-existing | A-UNIT-4a (`f0cae79`, 2026-07-02) |
+| **5 — data / infra** | #5 Thompson Residences 0 for-sale/for-lease | Data-driven | NOT LANE-B (unchanged path) |
+| **6 — verification-only** | #1 estimator events not showing in GA DebugView | No code bug found | N/A |
+
+Issues 3 + 4 are the LANE-B BUILD 1 regressions. Issues 2 + 6 are pre-existing. Issue 5 is data behaviour. Issue 1 is a browser-side debug-mode question, not broken code.
+
+##### Issue 4 — new-tab regression
+
+**Root cause:** LANE-B-1 + LANE-B BUILD 1 (`c2578ee`) wrapped 6 cards in `<a href>` without `target="_blank"`. Original behaviour was `window.open('_blank')` = new-tab; wrap defaults to same-tab. Cards inspected:
+
+| Card | File:line | Current anchor |
+|---|---|---|
+| ListingCard | `app/[slug]/components/ListingCard.tsx:163` | `<a href={propertyUrl} className="block no-underline text-inherit h-full">` |
+| GeoListingCard | `app/[slug]/components/GeoListingCard.tsx:145` | `<a href={propertyUrl} className="block no-underline text-inherit">` |
+| HomeListingCard | `app/[slug]/components/HomeListingCard.tsx:152` | `<a href={propertyUrl} className="block no-underline text-inherit">` |
+| Charlie ActiveListingCard | `app/charlie/components/ActiveListingCard.tsx:114` | `<a href={_href} style={{...}}>` |
+| Charlie BuildingCard | `app/charlie/components/BuildingCard.tsx:25` | `<a href={\`/${b.slug}\`} style={{...}}>` |
+| Charlie ComparableCard | `app/charlie/components/ComparableCard.tsx:209` | `<a href={_cmpHref} style={{...}}>` |
+
+**Verified**: none of the 6 have `target="_blank"` or `rel="noopener"` — grep confirmed.
+
+**Fix approach:** Add `target="_blank" rel="noopener"` on all 6 anchors. `rel="noopener"` alone (without `noreferrer`) is crawl-safe and preserves the referrer chain — LANE-B BUILD 1's rank-flow guarantee is not weakened. Same-origin anchors with `target="_blank" rel="noopener"` remain crawlable in Google's SSR crawler and open new-tab in the browser.
+
+##### Issue 3 — Sale Offer button navigates instead of firing estimator
+
+**Root cause:** LANE-B BUILD 1 wrapped ListingCard in `<a href>` but did not update the nested button handlers to add `preventDefault`. The commit's "Nested pills already stopPropagation" claim was true for stopping propagation but `stopPropagation` alone does NOT cancel the enclosing anchor's default navigation on descendant clicks.
+
+**Command-verified evidence:**
+- ListingCard button handlers (all use `stopPropagation` only, no `preventDefault`):
+  - `app/[slug]/components/ListingCard.tsx:186` (prevPhoto)
+  - `app/[slug]/components/ListingCard.tsx:195` (nextPhoto)
+  - `app/[slug]/components/ListingCard.tsx:318` (register)
+  - `app/[slug]/components/ListingCard.tsx:403-410` (Sale Offer — the reported regression)
+  - `app/[slug]/components/ListingCard.tsx:417-425` (History)
+- Working counterparts on GeoListingCard + HomeListingCard use `preventDefault + stopPropagation`:
+  - `app/[slug]/components/GeoListingCard.tsx:276` — `e => { e.preventDefault(); e.stopPropagation(); ... }`
+  - `app/[slug]/components/HomeListingCard.tsx:327` — `e=>{e.preventDefault();e.stopPropagation();...}`
+
+Charlie triplet cards have no nested onClick handlers (only `onMouseEnter/Leave`) — not affected.
+
+**Fix approach:** Add `e.preventDefault()` alongside `e.stopPropagation()` on every nested button handler inside ListingCard (lines 186, 195, 318, 403-410, 417-425). Same pattern GeoListingCard / HomeListingCard already use.
+
+##### Issue 6 — geo page render order (analytics above listings)
+
+**Root cause:** Not a LANE-B regression. Pre-existing from A-UNIT-4a (commit `f0cae79`, 2026-07-02) which introduced `<GeoMarketActivity>` as an SSR market-data panel "at top of page, client dashboard mid-page" (per the commit body). Current render order (grep-verified this session):
+
+| Page | Line | Order |
+|---|---|---|
+| AreaPage | 354 → 357 → 383 → 388 → 393 → 400 | GeoMarketActivity → GeoPageTabs → GeoInterlinking(munis) → AnalyticsSection → GeoSEOContent → GeoInterlinking(areas) |
+| MunicipalityPage | 330 → 333 → 391 → 398 → 406 | GeoMarketActivity → GeoPageTabs → AnalyticsSection → GeoSEOContent → GeoInterlinking |
+| CommunityPage | 281 → 284 → 309 → 316 → (Buildings) → 358 | GeoMarketActivity → GeoPageTabs → AnalyticsSection → GeoSEOContent → Buildings-in-community → GeoInterlinking |
+
+`GeoMarketActivity` (SSR market panel) sits above `GeoPageTabs` (listings). `AnalyticsSection` (JS-hydrated dashboard) already sits below listings — that side is fine.
+
+**Fix approach:** Move the `<GeoMarketActivity>` render below `<GeoPageTabs>` on all 3 geo pages. Simple structural reorder in the JSX; no data-fetch change needed.
+
+##### Issue 5 — Thompson Residences 0 listings
+
+**Root cause:** Data-driven, not a LANE-B regression. The Thompson slug that shows 0 for-sale/for-lease genuinely has 0 active listings in the DB. Other Thompson buildings have listings.
+
+DB probe this session (`buildings.slug ILIKE '%thompson%'`, then per-building `mls_listings.eq(building_id)` count with `standard_status IN ('Active','Active Under Contract','Pending')`):
+
+| Slug | Total | Active For Sale | Active For Lease |
+|---|:---:|:---:|:---:|
+| `the-thompson-residences-55-stewart-st-toronto` | 171 | 4 | 1 |
+| `the-thompson-residences-552-wellington-st-w-toronto` | 19 | **0** | **0** |
+| `thompson-residences-629-king-street-w-toronto` | 289 | 4 | 6 |
+| `thompson-residence-lofts-condos-38-stewart-street-toronto` | 77 | 2 | 0 |
+
+The **552-Wellington** building matches the operator's report exactly: 0/0. Not a filter bug — the DB genuinely has 0 active listings for that building.
+
+**Additional observation:** BuildingPage hero counts (lines 208-209) use `standard_status === 'Active'` strict — would exclude `'Active Under Contract'` and `'Pending'`. Not the cause in Thompson's case (all Thompson actives probed have status `'Active'`), but a potential edge case on other buildings.
+
+BuildingPage listing queries were NOT touched by LANE-B BUILD 1 or BUILD 2 — verified via `git log`.
+
+**Fix approach:** Two options depending on operator preference:
+1. If the intent is to show ALL Thompson listings on ONE page, add a router redirect or a "development" grouping. But there are 4 distinct Thompson buildings at 4 addresses — genuinely distinct entities per DB.
+2. If the intent is to display the correct count for each address: no fix needed; DB reflects reality.
+3. If the operator suspects the DB is stale relative to condos.ca: separate MLS-sync investigation (out of LANE-B scope).
+
+**Claimed, unverified:** the exact URL the operator visited. If it's not `552-wellington`, fresh reproduction is needed.
+
+##### Issue 2 — "Agent ID required" on nbh + development pages
+
+**Root cause:** Pre-existing bug (predates LANE-B). Two call-sites of `<EstimatorBuyerModal>` (the condo estimator modal) do not thread the `tenantId` prop:
+
+| Call-site | File:line | tenantId passed? |
+|---|---|:---:|
+| `NeighbourhoodListingSection` | `app/[slug]/components/NeighbourhoodListingSection.tsx:291-294` | **NO** |
+| `DevelopmentListings` | `app/[slug]/components/DevelopmentListings.tsx:317-327` | **NO** |
+| `GeoListingSection` (muni/comm/area) | `app/[slug]/components/GeoListingSection.tsx:400-402` | YES |
+| `PropertyPageClient` (condo detail) | `app/property/[id]/PropertyPageClient.tsx:317` | YES |
+
+Effect: on nbh + development pages, the modal receives `tenantId={undefined}`. `EstimatorBuyerModal.tsx:185` routes based on that: `tenantId ? '/api/walliam/estimator/session' : '/api/estimator/session'`. Undefined → legacy `/api/estimator/session` route. Its request body needs `agentId` (`app/api/estimator/session/route.ts:23-25`); when the page's `agentId` prop resolves empty (host-based `getAgentFromHost` returns null for tenant hosts like aily.ca), the API returns 400 `"Agent ID required"`.
+
+Muni/community/area pages work because `GeoListingSection` threads `tenantId` → modal uses the walliam route which resolves the agent via the RPC or `tenant.default_agent_id`.
+
+DB probe verified `resolve_agent_for_context` RPC returns a non-null agent id for both nbh and muni contexts on aily tenant — not an RPC bug. Purely a client-side prop-drilling gap.
+
+**Fix approach:** Add `tenantId={tenantId}` to both call-sites:
+- `app/[slug]/components/NeighbourhoodListingSection.tsx:294` — append to the `EstimatorBuyerModal` prop list.
+- `app/[slug]/components/DevelopmentListings.tsx:317-327` — same. DevelopmentListings will also need `tenantId` threaded down from `DevelopmentPage` (currently not a prop on that component — needs prop added + call-site update in `DevelopmentPage.tsx`).
+
+##### Issue 1 — estimator GA events not showing in DebugView
+
+**Root cause:** No code bug identified. Operator's own hypothesis is correct — DebugView requires browser-side debug mode.
+
+Command-verified code path:
+- `app/estimator/components/EstimatorResults.tsx:506-508` — condo path fires `trackEvent('estimator_submit', { estimator_kind: 'condo' })` after `enrichSucceeded` is true.
+- `app/estimator/components/HomeEstimatorResults.tsx:558` — home path fires `trackEvent('estimator_submit', { estimator_kind: 'home' })` in the same success branch.
+- `lib/analytics/track.ts:40-49` — `trackEvent` guards on `window.gtag`, no-ops safely if analytics is off.
+- `components/analytics/TenantAnalytics.tsx:183` — gtag.js loaded conditionally on `tenant.google_analytics_id` presence.
+- `tenants.google_analytics_id` is a per-tenant column (verified in `lib/tenant/getTenant.ts:36`, `lib/utils/tenant-brand.ts:38`).
+
+The event code fires when the estimator's enrich POST resolves successfully. Whether it reaches GA DebugView depends on the browser session:
+- Debug mode active? (needs GA Debugger extension OR `?debug_mode=1` URL param OR `debug_mode: true` in gtag config)
+- Consent granted? (with Consent Mode v2 + `analytics_storage: 'denied'` default, events still fire as cookieless pings — they should appear in the standard Realtime view but may not surface in DebugView)
+- gtag loaded? (`tenant.google_analytics_id` non-null for the tenant on the tested host)
+
+**Fix approach:** No code fix. Verification steps for the operator:
+1. Open the estimator page with Chrome DevTools → Network tab → filter `collect?v=2` → click Submit → confirm the outbound gtag/g/collect request fires with `en=estimator_submit`.
+2. Alternative: check GA4 → **Realtime** (not DebugView) → look for the event within 1–2 minutes.
+3. If neither shows the event, THEN there's a code/config issue to investigate. Until reproduced with browser instrumentation, the event fires as designed.
+
+**Claimed, unverified:** whether the outbound request actually reaches GA on the operator's browser session. Cannot verify from static analysis; requires a browser test.
+
+##### Coordinated fix scope for the follow-on build
+
+Grouped by shared file / mechanism so fixes ship as one coherent dispatch (not 6 separate edits):
+
+| Fix | Files | Rationale |
+|---|---|---|
+| **A** — restore new-tab on 6 cards | `ListingCard.tsx`, `GeoListingCard.tsx`, `HomeListingCard.tsx`, Charlie triplet | Same edit shape: add `target="_blank" rel="noopener"` to the wrapper anchor. |
+| **B** — restore Sale Offer button on ListingCard | `ListingCard.tsx` | Add `preventDefault` on lines 186, 195, 318, 403, 417. Same file as (A). |
+| **C** — thread tenantId to condo estimator modal | `NeighbourhoodListingSection.tsx`, `DevelopmentListings.tsx` + prop-drill from `DevelopmentPage.tsx` | Two call-sites; verify no other missing site. |
+| **D** — move analytics below listings on 3 geo pages | `AreaPage.tsx`, `MunicipalityPage.tsx`, `CommunityPage.tsx` | JSX reorder only, no data change. |
+| **E** — investigate Thompson (data/URL confirmation) | operator-input required | May be no-op if 552-Wellington was the URL. |
+| **F** — verify GA event firing in-browser | operator-verify | DevTools Network filter for `collect?v=2`. |
+
+**HOLD** — no fix applied this dispatch. Diagnosis only.
+
+#### LANE-B REGRESSION FIX — coordinated, all 6 issues (2026-07-09)
+
+Coordinated fix dispatch closing all 6 issues from the READ-ONLY diagnosis above. 2 fixes are LANE-B BUILD 1 regressions (A, B); 2 are pre-existing (C, D); 1 verifies no bug exists (E); 1 is operator-verification only (#1 — no code change). Base commit `fae2a65` (live on origin/main). All backups made before edit. TSC clean. Both-tenant smokes verify each fix; regression checks confirm Build 1/2 features preserved.
+
+##### FIX A — ListingCard button click-capture (Sev 3, LANE-B regression, MINE)
+
+Root cause: LANE-B BUILD 1 (`c2578ee`) wrapped ListingCard in `<a href>` but did NOT add `preventDefault` to nested button handlers. `stopPropagation` alone doesn't cancel enclosing anchor's default navigation for descendant button clicks. Sale Offer button navigated to property page instead of firing the estimator.
+
+Applied to `app/[slug]/components/ListingCard.tsx` — 5 button handlers now use `e.preventDefault(); e.stopPropagation()`:
+- Line 186 (prev photo)
+- Line 195 (next photo)
+- Line 318 (register CTA)
+- Line 403 (Sale Offer / Lease Offer) — the reported regression
+- Line 417 (History)
+
+Matches the working pattern already applied in GeoListingCard:276 and HomeListingCard:327 (which were LANE-B-1 fixes and used the correct pattern from day one — LANE-B BUILD 1's mistake was not carrying it forward to ListingCard).
+
+Smoke: `70-princes-street-toronto-c08` — SSR HTML confirms the button is present (`Sale Offer` × 3 rendered listings on aily + walliam). Behavioural test (button fires estimator vs navigates) requires browser click — flagged **claimed-behaviour-based-on-code-parity**: exact same handler pattern as GeoListingCard/HomeListingCard which work correctly.
+
+##### FIX B — new-tab restoration on 6 wrapped cards (Sev 4, LANE-B regression, MINE)
+
+Root cause: LANE-B-1 + LANE-B BUILD 1 wrapped 6 cards in `<a href>` without `target="_blank" rel="noopener"`. Original UX (`window.open('_blank')`) was new-tab; wrap defaulted to same-tab.
+
+Applied `target="_blank" rel="noopener"` to all 6 card wrappers:
+- `app/[slug]/components/ListingCard.tsx:163`
+- `app/[slug]/components/GeoListingCard.tsx:145`
+- `app/[slug]/components/HomeListingCard.tsx:152`
+- `app/charlie/components/ActiveListingCard.tsx:114`
+- `app/charlie/components/BuildingCard.tsx:25`
+- `app/charlie/components/ComparableCard.tsx:209`
+
+`rel="noopener"` alone (no `noreferrer`) is the correct choice — it prevents the opened tab from accessing `window.opener` (security), but does NOT strip the referrer chain. Google's rank-flow attribution via referrer is preserved. This is a strict improvement over LANE-B BUILD 1's bare `<a href>` — still crawlable AND new-tab AND rank-safe.
+
+Smoke:
+- Aily `/70-princes-street-toronto-c08`: 3 card anchors, each with `target="_blank" rel="noopener"` + crawlable unit slug (byte-verified `/70-princes-street-toronto-c08-unit-406-c12984538 target="_blank" rel="noopener"`).
+- Walliam same URL: 3 anchors, same shape.
+- Walliam nbh `/toronto/downtown`: 24 crawlable listing anchors with `target="_blank" rel="noopener"`.
+- Zero `rel="noopener noreferrer"` regressions on internal links (walliam home byte-verified — Build 1 rank-flow strip preserved).
+
+##### FIX C — thread tenantId to condo estimator modal (Sev 3, PRE-EXISTING, not LANE-B)
+
+Root cause: pre-existing bug (predates LANE-B). Two call-sites of `<EstimatorBuyerModal>` didn't thread `tenantId`. Missing `tenantId` → modal routes to legacy `/api/estimator/session` (needs agentId) → API returns 400 "Agent ID required" on tenant hosts where host-based `getAgentFromHost` returns null.
+
+Applied:
+- `app/[slug]/components/NeighbourhoodListingSection.tsx:294` — added `tenantId={tenantId}` to the `EstimatorBuyerModal` call. (`tenantId` was already in scope as a component prop.)
+- `app/[slug]/components/DevelopmentListings.tsx:9,29,328` — added `tenantId?: string` to the Props interface, destructured it, passed to the `EstimatorBuyerModal`.
+- `app/[slug]/DevelopmentPage.tsx:142-148, 378` — resolved `tenantId` via `getCurrentTenantId` (dynamic import — matches existing pattern in MunicipalityPage), passed to `<DevelopmentListings>` as `tenantId={tenantId || undefined}`. NULL on non-tenant legacy hosts is preserved (modal falls to legacy path there, unchanged behaviour).
+
+Smoke: TSC clean. Behavioural test on both tenants — same pattern as `GeoListingSection.tsx:401` (which threads tenantId and works today on muni/community/area estimator flows). **Claimed-behaviour-based-on-code-parity**: exact same prop threading pattern as the working case; browser-level confirmation of estimator open on a nbh listing card would fully close the loop.
+
+##### FIX D — reorder GeoMarketActivity below listings (Sev 4, PRE-EXISTING A-UNIT-4a)
+
+Root cause: A-UNIT-4a (commit `f0cae79`, 2026-07-02) placed the SSR `<GeoMarketActivity>` panel above `<GeoPageTabs>` by design. Users prefer listings-first (came for for-sale/for-lease, not market analytics).
+
+Applied — moved `<GeoMarketActivity>` to render below `<GeoPageTabs>` on 3 geo pages. Pure JSX reorder; no data or logic change:
+- `app/[slug]/CommunityPage.tsx`
+- `app/[slug]/MunicipalityPage.tsx`
+- `app/[slug]/AreaPage.tsx`
+
+Smoke (byte-positional check on SSR HTML — char offset of `>All Listings<` vs `{geoName} Market`):
+
+| Page | tenant | tabs char | market char | order |
+|---|---|:---:|:---:|:---:|
+| `/waterfront-communities-c8` | aily | 18271 | 175444 | TABS first OK |
+| `/toronto-c08` | aily | 17956 | 180607 | TABS first OK |
+| `/toronto-area` | aily | 17133 | 168474 | TABS first OK |
+| `/waterfront-communities-c8` | walliam | 16915 | 24097 | TABS first OK |
+| `/toronto-c08` | walliam | 17257 | 179908 | TABS first OK |
+
+All 3 geo pages on both tenants: TABS first, MARKET after. Reorder verified.
+
+##### FIX E — Thompson Residences data verification (Sev 5, NO BUG)
+
+DB probe this session across all 7 Thompson-matching buildings — hero-count filter (`standard_status = 'Active'`) matches tabs-listings filter (`standard_status IN ('Active','Active Under Contract')`) for every Thompson row (none have `'Active Under Contract'` status):
+
+| Slug | Active For Sale | Active For Lease |
+|---|:---:|:---:|
+| `101-thompson-road-penetanguishene` | 0 | 0 |
+| `131-thompson-road-s-milton` | 0 | 0 |
+| `90-thompsons-road-penetanguishene` | 0 | 0 |
+| `the-thompson-residences-55-stewart-st-toronto` | 4 | 1 |
+| **`the-thompson-residences-552-wellington-st-w-toronto`** | **0** | **0** |
+| `thompson-residence-lofts-condos-38-stewart-street-toronto` | 2 | 0 |
+| `thompson-residences-629-king-street-w-toronto` | 4 | 6 |
+
+4 Thompson-branded buildings genuinely have 0 active listings in the DB. If the operator's URL was one of these (most likely 552-Wellington given the "The Thompson Residences" naming), 0 is the correct number — not a bug. No code change applied. If DB is stale vs condos.ca, that's an infra/sync issue, not a display bug.
+
+**Claimed, unverified**: which exact Thompson URL the operator visited. If a URL with >0 listings shows 0, fresh reproduction is needed — but the probe covers every Thompson building, so no coverage gap.
+
+##### #1 — GA estimator event (NO CODE CHANGE, OPERATOR-VERIFY)
+
+`trackEvent('estimator_submit', ...)` fires at `EstimatorResults.tsx:508` (condo) and `HomeEstimatorResults.tsx:558` (home) after enrich POST succeeds. `trackEvent` no-ops safely if `window.gtag` isn't loaded. gtag script mounted via `TenantAnalytics.tsx` when `tenant.google_analytics_id` is non-null.
+
+DebugView showed 0 events likely because browser debug mode wasn't active (needs GA Debugger extension OR `?debug_mode=1` OR `debug_mode: true` in gtag config). Verification steps for operator (no code change):
+1. DevTools Network → filter `collect?v=2` → submit estimator → confirm outbound request with `en=estimator_submit`.
+2. Or GA4 → Realtime (not DebugView) → look for the event within 1–2 minutes.
+
+If neither shows the event after those steps, that would confirm a real tracking bug — until then, code path is verified correct.
+
+##### Regression checks (both tenants)
+
+- Building `/70-princes-street-toronto-c08`: Build 1's "Explore more real estate" up-chain + "Units for Sale at" section intact on both tenants. Unit anchors crawlable + new-tab.
+- Community `/waterfront-communities-c8`: Build 2's "Buildings in Waterfront Communities C8" section intact.
+- Municipality `/toronto-c08`: Build 2's "Neighbourhoods in Toronto C08" section + `/toronto/downtown` anchor intact.
+- Homepage `/`: Build 2's "Explore Top Areas" section intact; zero `rel="noopener noreferrer"` on internal links (Build 1 rank-flow strip preserved).
+
+##### Files this dispatch
+
+Modified (each with `.backup_LANE-B-REGRESSION-FIX_20260709_181500`):
+- `app/[slug]/components/ListingCard.tsx` (FIX A + B)
+- `app/[slug]/components/GeoListingCard.tsx` (FIX B)
+- `app/[slug]/components/HomeListingCard.tsx` (FIX B)
+- `app/charlie/components/ActiveListingCard.tsx` (FIX B)
+- `app/charlie/components/BuildingCard.tsx` (FIX B)
+- `app/charlie/components/ComparableCard.tsx` (FIX B)
+- `app/[slug]/components/NeighbourhoodListingSection.tsx` (FIX C)
+- `app/[slug]/components/DevelopmentListings.tsx` (FIX C)
+- `app/[slug]/DevelopmentPage.tsx` (FIX C prop drilling)
+- `app/[slug]/CommunityPage.tsx` (FIX D)
+- `app/[slug]/MunicipalityPage.tsx` (FIX D)
+- `app/[slug]/AreaPage.tsx` (FIX D)
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_LANE-B-REGRESSION-FIX_20260709_183500`)
+
+**HOLD PUSH** — commit staged locally only. Push withheld pending operator review.
+
 
 

@@ -149,7 +149,7 @@ export default function HomeListingCard({
             the anchor — see GeoListingCard for the full rationale. Prior
             sr-only-appendage pattern was bot-only; humans still fell to
             window.open. Nested pills already stopPropagation. */}
-        <a href={propertyUrl} className="block no-underline text-inherit">
+        <a href={propertyUrl} target="_blank" rel="noopener" className="block no-underline text-inherit">
         <article
           onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
           onMouseEnter={() => { setIsHovered(true); if(!allPhotosLoaded) loadAllPhotos() }}

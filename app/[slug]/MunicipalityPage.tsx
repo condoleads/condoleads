@@ -326,10 +326,8 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
       />
       <div className="max-w-7xl mx-auto px-4 py-8">
 
-        {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
-        <GeoMarketActivity geoType="municipality" geoId={municipality.id} geoName={municipality.name} />
-
-        <div className="mt-8">
+        {/* LANE-B-REGRESSION-FIX (2026-07-09): listings above market panel. */}
+        <div>
           <GeoPageTabs
             geoType="municipality"
             geoId={municipality.id}
@@ -341,6 +339,11 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             counts={counts}
             buildingsTitle="Buildings"
           />
+        </div>
+
+        <div className="mt-8">
+          {/* W-MARKETING A-UNIT-4a (2026-07-02): SSR market panel (SEO-visible). */}
+          <GeoMarketActivity geoType="municipality" geoId={municipality.id} geoName={municipality.name} />
         </div>
 
         {isHero && (

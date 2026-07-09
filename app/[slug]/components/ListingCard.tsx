@@ -160,7 +160,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
     // anchor's default nav (same-tab; Ctrl/Cmd/middle-click preserves
     // new-tab). Nested pills already stopPropagation. Restores crawlable
     // building → listings + condo → similar-condo pathways.
-    <a href={propertyUrl} className="block no-underline text-inherit h-full">
+    <a href={propertyUrl} target="_blank" rel="noopener" className="block no-underline text-inherit h-full">
     <article
       className="group bg-white rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden h-full flex flex-col cursor-pointer"
     >
@@ -183,7 +183,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               {(photos.length > 1 || !allPhotosLoaded) && !shouldBlur && (
                 <>
                   <button
-                    onClick={(e) => { e.stopPropagation(); prevPhoto(); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); prevPhoto(); }}
                     className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
                     aria-label="Previous photo"
                   >
@@ -192,7 +192,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
                     </svg>
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); nextPhoto(); }}
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); nextPhoto(); }}
                     className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition-colors z-10"
                     aria-label="Next photo"
                   >
@@ -315,7 +315,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
             {/* Register CTA */}
             <div className="pt-4 mt-auto">
               <button
-                onClick={(e) => { e.stopPropagation(); setShowRegister(true); }}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowRegister(true); }}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
               >
                 Register to See {isSale ? 'Sold' : 'Leased'} Details
@@ -401,6 +401,11 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               {!isClosed && (
                 <button
                   onClick={(e) => {
+                    // LANE-B-REGRESSION-FIX (2026-07-09): preventDefault
+                    // stops the enclosing card anchor (LANE-B BUILD 1 wrap)
+                    // from navigating when this button fires. stopPropagation
+                    // alone was insufficient. Match Geo/Home card pattern.
+                    e.preventDefault()
                     e.stopPropagation()
                     if (!user) {
                       setShowRegister(true)
@@ -415,6 +420,7 @@ export default function ListingCard({ listing, type, onEstimateClick, buildingSl
               )}
               <button
                 onClick={(e) => {
+                  e.preventDefault()
                   e.stopPropagation()
                   if (!user) {
                     setHistoryPending(true)
