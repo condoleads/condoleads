@@ -4853,5 +4853,122 @@ Modified (each with `.backup_LANE-B-2_20260708_*` on-disk):
 
 **HOLD PUSH** — commit staged locally only. Push withheld pending operator review.
 
+#### LANE-B BUILD 2 — additive internal-link paths (2026-07-09)
+
+Additive comprehensive linking. Build 1 closed broken crawlability (window.open / noopener strips + building dead-end). Build 2 fills the MISSING down-link paths so every parent geo entity has a crawlable link to its children. Base commit `c2578ee` (live on origin/main). All hrefs come from real DB rows via existing helpers or fresh row-fetches — never fabricated. NULL levels silent-omit; caps applied where high-cardinality would dilute link equity. Backups on every touched source before edit.
+
+##### Step 0 — Down-link matrix (comprehensive, verified this session)
+
+Symbols: ✓ = crawlable `<a href>` present in SSR HTML · ⚠️ = crawlable but flawed/partial · ❌ = missing in SSR HTML
+
+**Before Build 2** (evidence from source grep + prior-dispatch curl):
+
+| From ↓ / To → | Area | Muni | Community | Nbh | Building | Listing |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Homepage | ❌ dead-prop topAreas fetched, never rendered | ⚠️ CondoMarketActivity (some) | ⚠️ CMA (some) | ⚠️ mega-menu (JS-hydrated only) | ⚠️ BuildingsGrid (some) | ❌ |
+| Area | ✓ "All Areas" | ✓ "Munis in area" | ❌ | ❌ | ❌ | via hydrated tabs |
+| Muni | ✓ breadcrumb | ✓ sibling munis | ✓ CommunityCard grid | **❌ MISSING (zero code path)** | ❌ | via tabs |
+| Community | ✓ breadcrumb | ✓ breadcrumb | ✓ sibling communities | ❌ | **❌ buildingCount displayed, no crawlable list** | via tabs |
+| Neighbourhood | ✓ | ✓ pills | ✓ Communities grid | — | ❌ (via community indirect) | via tabs |
+| Building | ✓ (Build 1) | ✓ (Build 1) | ✓ (Build 1) | ❌ | — | ✓ (Build 1) |
+| Development | ❌ | ❌ (muni.name resolved but NOT linked) | ❌ | ❌ | ✓ per-bldg "View Building" Link | via tabs |
+
+**After Build 2** (evidence from smokes this session on both tenants):
+
+| From ↓ / To → | Area | Muni | Community | Nbh | Building | Listing |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| Homepage | — | **✓ "Explore Top Areas" grid (6 muni anchors, real slugs — was dead prop)** | ⚠️ CMA (unchanged; already crawl-safe post Build 1) | ⚠️ mega-menu (JS) | ⚠️ BuildingsGrid | ❌ intentional (link-dilution risk) |
+| Area | ✓ | ✓ | ⚠️ two-hop intentional (Area → Muni → Community grid) | ❌ intentional (nbh is Toronto-only; muni-scoped is the natural path) | ❌ intentional (via Muni → Community → Building chain) | via tabs |
+| Muni | ✓ | ✓ | ✓ | **✓ NEW "Neighbourhoods in {muni}" (data-driven via municipality_neighbourhoods join; silent-omit when no rows)** | ❌ intentional (via Community grid → Community → Building chain) | via tabs |
+| Community | ✓ | ✓ | ✓ | ❌ intentional | **✓ NEW "Buildings in {community}" (capped 24, real slugs from buildings table, silent-omit when empty)** | via tabs |
+| Neighbourhood | ✓ | ✓ pills | ✓ | — | ❌ intentional | via tabs |
+| Building | ✓ | ✓ | ✓ | ❌ intentional | — | ✓ |
+| Development | **✓ NEW up-chain sentence** | **✓ NEW up-chain sentence** | **✓ NEW up-chain sentence** | ❌ intentional | ✓ | via tabs |
+
+**Intentional NOT gaps (documented, not fabricated):**
+- Area → Community direct: two-hop Area → Muni → Community grid already sound. A direct dump would flood area pages with hundreds of anchors and dilute rank flow. Rationale: crawl reaches every community; adding a shortcut would add nothing signals-wise.
+- Nbh → Building direct: buildings link to communities (community_id FK); no nbh_id FK on buildings. Nbh → Community → Building chain covers it after Step 1 fix. Adding a fabricated join would violate Rule Zero #1.
+- Muni → Building direct list: CommunityCard grid → community → building (post Step 1) is the natural rank-flow path. A direct-dump on muni would be link-dilution on high-density munis (e.g. Toronto C08 has hundreds of buildings via ~20 communities).
+- Homepage → every listing: link-dilution; unnecessary.
+
+**Verdict**: every parent→child geo path is now either crawlable in SSR HTML or intentionally-omitted with a documented rank-flow rationale.
+
+##### Step 1 — Community → Buildings-in-community
+
+Backup: `app/[slug]/CommunityPage.tsx.backup_LANE-B-BUILD-2_20260709_155000`.
+
+`app/[slug]/CommunityPage.tsx`:
+- Added `buildingsListResult` to the parallel Promise.all fetch: `supabase.from('buildings').select('id, slug, building_name, canonical_address').eq('community_id', communityId).order('building_name').limit(24)`. Alphabetical, capped-24 at fetch (prevents Postgres-side scan on 100+ building communities like Waterfront C8).
+- Returned `buildingsInCommunity` from the cached data function; destructured in render.
+- Rendered a new `<section>` above `GeoInterlinking` with `<ul>` of crawlable `<a href="/{building.slug}">` — displays building name + canonical address per row. Header includes `({count} of {total})` chip when cap was hit.
+- Silent-omit when `buildingsInCommunity.length === 0`.
+
+Smoke evidence: `/waterfront-communities-c8` on aily and walliam renders exactly 24 unique building anchors (cap respected). Real slugs: `1-yonge-street-toronto-c08`, `118-merchant-wharf-n-a-toronto-c08`, `1213-29-queens-quay-e-toronto-c08`, `15-merchant-wharf-way-toronto-c08`, `15-queen-s-quay-e-toronto-c08`, `2-church-street-toronto-c08` (sample of 24). Section heading "Buildings in Waterfront Communities C8".
+
+##### Step 2 — Muni → Neighbourhoods
+
+Backup: `app/[slug]/MunicipalityPage.tsx.backup_LANE-B-BUILD-2_20260709_155000`.
+
+`app/[slug]/MunicipalityPage.tsx`:
+- Added `neighbourhoodsResult` to the parallel Promise.all fetch using the nested-join shape: `supabase.from('municipality_neighbourhoods').select('neighbourhoods(id, name, slug, is_active)').eq('municipality_id', municipalityId)`. This is the reverse of the neighbourhood-page fetch pattern at `app/comprehensive-site/toronto/[neighbourhood]/page.tsx:87`.
+- Post-processing: flatten join, require slug + `is_active` + name (drop malformed rows), alphabetical sort.
+- Returned `neighbourhoods` from cached data; destructured in render.
+- Rendered a `<div>` with `<a href="/toronto/{n.slug}">` pills above the CommunityCard grid — same target URL shape as the mega-menu, matches the existing `/toronto/[nbh]` route.
+- Silent-omit when `neighbourhoods.length === 0`.
+
+Data verified this session via probe: `municipality_neighbourhoods` has 34 rows, one per Toronto district muni (C01–C15, E01–E11, W01–W10 all map to 1 nbh each). All other munis have 0 rows → section silent-omits. Every Toronto district page now has "Neighbourhoods in Toronto {D}" section.
+
+Smoke evidence: `/toronto-c08` on aily and walliam renders "Neighbourhoods in Toronto C08" heading + `<a href="/toronto/downtown">Downtown</a>` pill. HTML also shows the RSC-serialized shadow copy (expected). Non-Toronto munis (e.g. `/mississauga`, `/whitby`) silently omit the section — verified.
+
+##### Step 3 — Homepage `topAreas` dead prop → crawlable muni-anchor grid
+
+Backups: `components/HomePageComprehensiveClient.tsx.backup_LANE-B-BUILD-2_20260709_155000`, `components/HomePageComprehensiveClientV2.tsx.backup_LANE-B-BUILD-2_20260709_155000`.
+
+Verified `topAreas` was destructured in both `HomePageComprehensiveClient` and `HomePageComprehensiveClientV2` but never used in the render body (grep-confirmed against non-backup source). `fetchTopAreas` returns `AreaCard[]` where `type === 'municipality'` and `slug` comes from `municipalities.slug` (single source; `lib/comprehensive/stats-fetcher.ts:175`). Aily uses V2, walliam uses V2 — verified.
+
+Both client components: added an "Explore Top Areas" section between the Hero and `<HowItWorks>`. Rendered as `<a href="/{a.slug}">` grid with per-card active-count + building-count metadata (from the already-fetched AreaCard shape, no new query). Silent-omit when `topAreas` is empty.
+
+Smoke evidence: aily home renders 6 crawlable muni anchors: `toronto-c01`, `hamilton`, `brampton`, `markham`, `vaughan`, `toronto-c08` — sorted by active-count descending (matches `fetchTopAreas` sort). Walliam home renders same 6 anchors (same fetch — market data, tenant-neutral). Both anchors carry active + building counts. Section header "Explore Top Areas" byte-verified in SSR HTML.
+
+##### Step 4 — Development page up-chain (Step 0 sweep found)
+
+Backup: `app/[slug]/DevelopmentPage.tsx.backup_LANE-B-BUILD-2_20260709_155000`.
+
+`app/[slug]/DevelopmentPage.tsx`:
+- Extended the pre-existing `_devLocalityName` resolver (LANE-B-2 legacy) to also capture community + area alongside muni. Now returns `_devGeoChain: { community: {name,slug}|null, muni: {name,slug}|null, area: {name,slug}|null }`. NULL levels drop cleanly. Same shape as `BuildingPage._geoChain`.
+- Rendered an up-chain paragraph above `<DevelopmentSEO>`: "Explore more real estate in the wider area: {community}, {muni} and the {area} area." — same phrasing/shape as the Build 1 SEODescription up-chain.
+
+Smoke evidence: `/pier-27-condos-15-29-39-queens-quay-e-toronto` on aily renders the sentence with anchors `/waterfront-communities-c8 → /toronto-c08 → /toronto-area`. Same chain, same real slugs — parity with the building-page up-chain.
+
+##### Step 5 — TSC + both-tenant smokes + regression
+
+- TSC clean (both before and after edits): 0 errors.
+- **aily smokes:**
+  - Homepage `/`: "Explore Top Areas" section, 6 muni anchors, real slugs.
+  - Community `/waterfront-communities-c8`: "Buildings in Waterfront Communities C8" heading + 24 unique building anchors (cap respected).
+  - Municipality `/toronto-c08`: "Neighbourhoods in Toronto C08" heading + `/toronto/downtown` anchor.
+  - Development `/pier-27-condos-15-29-39-queens-quay-e-toronto`: up-chain with `/waterfront-communities-c8`, `/toronto-c08`, `/toronto-area`.
+  - **Regression check** — Building `/70-princes-street-toronto-c08`: Build 1's "Explore more real estate" up-chain + "Units for Sale at {building}" section still present, unit anchors still crawlable (`/70-princes-street-toronto-c08-unit-406-c12984538` sample).
+- **walliam smokes** (env swapped, dev restarted):
+  - Homepage: same 6 muni anchors (market data is tenant-neutral).
+  - Community `/waterfront-communities-c8`: same 24 building anchors.
+  - Municipality `/toronto-c08`: same "Neighbourhoods in Toronto C08" + `/toronto/downtown`.
+  - **Regression check** — Building `/70-princes-street-toronto-c08`: 0 `target="_blank"` / 0 `rel="noopener"` in HTML (Build 1 preserved), "Explore more real estate" up-chain preserved.
+- Non-Toronto munis silently omit the neighbourhoods section (verified `/mississauga`, `/whitby`, `/vaughan`, `/toronto` — no false renders).
+
+##### Files this dispatch
+
+Modified (each with `.backup_LANE-B-BUILD-2_20260709_155000`):
+- `app/[slug]/CommunityPage.tsx`
+- `app/[slug]/MunicipalityPage.tsx`
+- `app/[slug]/DevelopmentPage.tsx`
+- `components/HomePageComprehensiveClient.tsx`
+- `components/HomePageComprehensiveClientV2.tsx`
+- `docs/W-MARKETING-TRACKER.md` (this section; backup `.backup_LANE-B-BUILD-2_20260709_162500`)
+
+**Linking architecture: comprehensive** per the Step 0 matrix. Every parent→child geo path is either crawlable in SSR HTML this session or intentionally-omitted with a documented rank-flow rationale (link-dilution avoidance) — not fabricated.
+
+**HOLD PUSH** — commit staged locally only. Push withheld pending operator review.
+
 
 

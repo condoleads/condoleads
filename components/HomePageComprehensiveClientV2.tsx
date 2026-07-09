@@ -753,6 +753,41 @@ export default function HomePageComprehensiveClientV2({ tenantId, brandName, wor
   return (
     <div style={{ minHeight: '100vh', background: '#060b18' }}>
       <WalliamHero wordmarkStyle={wordmarkStyle} brandName={brandName} topAreas={topAreas} neighbourhoods={neighbourhoods} access={access} assistantName={assistantName} defaultHomeMode={defaultHomeMode} showBrowsePlanCTAs={showBrowsePlanCTAs} />
+      {/* LANE-B BUILD 2 (2026-07-09): revive the dead topAreas prop as
+          a crawlable muni-anchor grid. topAreas rows are municipalities
+          (see stats-fetcher.ts:175). Silent-omit when empty. Real slugs
+          come from the municipalities table via fetchTopAreas. */}
+      {topAreas && topAreas.length > 0 && (
+        <section style={{ maxWidth: 1100, margin: '0 auto', padding: '40px 24px' }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 16 }}>
+            Explore Top Areas
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+            {topAreas.map((a) => (
+              <a
+                key={a.slug}
+                href={`/${a.slug}`}
+                style={{
+                  display: 'block',
+                  padding: '14px 16px',
+                  borderRadius: 12,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#fff',
+                  textDecoration: 'none',
+                  transition: 'border-color 0.15s',
+                }}
+              >
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>{a.name}</div>
+                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
+                  {a.condoCount + a.homeCount} active
+                  {a.buildingCount > 0 && ` · ${a.buildingCount} buildings`}
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
       <HowItWorks assistantName={assistantName} />
     </div>
   );

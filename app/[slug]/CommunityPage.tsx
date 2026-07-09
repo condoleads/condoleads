@@ -81,6 +81,7 @@ const getCommunityData = unstable_cache(
     const [
       municipalityResult,
       buildingsResult,
+      buildingsListResult,
       initialListingsResult,
       forSaleCount,
       forLeaseCount,
@@ -90,6 +91,11 @@ const getCommunityData = unstable_cache(
     ] = await Promise.all([
     supabase.from('municipalities').select('id, name, slug, area_id').eq('id', municipalityId).single(),
     supabase.from('buildings').select('id', { count: 'exact', head: true }).eq('community_id', communityId),
+    // LANE-B BUILD 2 (2026-07-09): crawlable buildings-in-community list.
+    // Alphabetical, capped 24 (prevents link-dilution on high-density
+    // communities like Waterfront). Real slugs from buildings table.
+    // Silent-omit at render when array is empty.
+    supabase.from('buildings').select('id, slug, building_name, canonical_address').eq('community_id', communityId).order('building_name').limit(24),
     // FIX: available_in_idx → available_in_vow
     supabase.from('mls_listings').select(LISTING_SELECT)
       .eq(geoFilter.column, geoFilter.value)
@@ -146,7 +152,10 @@ const getCommunityData = unstable_cache(
     name: c.name,
     slug: c.slug,
   }))
-  return { municipality, buildingCount, initialListings, counts, siblingCommunities }
+  const buildingsInCommunity = ((buildingsListResult as any)?.data || [])
+    .filter((b: any) => b && b.slug && b.building_name)
+    .map((b: any) => ({ slug: b.slug, name: b.building_name, address: b.canonical_address || null }))
+  return { municipality, buildingCount, initialListings, counts, siblingCommunities, buildingsInCommunity }
   },
   ['community-data'],
   { revalidate: 300, tags: ['community'] }
@@ -184,7 +193,7 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
   if (tenantId) {
     resolvedAgentId = await resolveAgentForContext({ community_id: community.id, tenant_id: tenantId })
   }
-  const { municipality, buildingCount, initialListings, counts, siblingCommunities } = data
+  const { municipality, buildingCount, initialListings, counts, siblingCommunities, buildingsInCommunity } = data
 
   // FIX: area lookup moved inside Promise.all above isn't possible since we need municipality.area_id
   // but we avoid a second sequential await by checking early and running in parallel with siblings
@@ -311,6 +320,40 @@ export default async function CommunityPage({ community }: CommunityPageProps) {
           buildingCount={buildingCount}
           counts={counts}
         />
+
+        {/* LANE-B BUILD 2 (2026-07-09): crawlable buildings-in-community list.
+            Fills the Community → Building gap in the down-link matrix. Real
+            slugs (buildings.slug), alphabetical, capped 24 at fetch time to
+            prevent link-dilution on high-density communities. Silent-omit
+            when the community has zero buildings (row-count driven, not
+            fabricated). Section header ties keyword to community name. */}
+        {buildingsInCommunity && buildingsInCommunity.length > 0 && (
+          <section className="mt-8">
+            <h2 className="text-xl font-semibold text-slate-900 mb-4">
+              Buildings in {community.name}
+              {buildingCount > buildingsInCommunity.length && (
+                <span className="ml-2 text-sm font-normal text-slate-500">
+                  ({buildingsInCommunity.length} of {buildingCount})
+                </span>
+              )}
+            </h2>
+            <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {buildingsInCommunity.map((b: { slug: string; name: string; address: string | null }) => (
+                <li key={b.slug}>
+                  <a
+                    href={`/${b.slug}`}
+                    className="block px-3 py-2 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                  >
+                    <span className="text-sm font-medium text-slate-800">{b.name}</span>
+                    {b.address && (
+                      <span className="block text-xs text-slate-500 truncate">{b.address}</span>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <GeoInterlinking
           title={`Other Communities in ${municipality?.name || 'this area'}`}

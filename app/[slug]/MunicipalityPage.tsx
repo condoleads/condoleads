@@ -89,6 +89,7 @@ const getMunicipalityData = unstable_cache(
       soldCount,
       leasedCount,
       siblingMunicipalitiesResult,
+      neighbourhoodsResult,
     ] = await Promise.all([
     supabase.from('treb_areas').select('id, name, slug').eq('id', areaId).single(),
     supabase.from('communities').select('id, name, slug').eq('municipality_id', municipalityId).order('name'),
@@ -138,6 +139,14 @@ const getMunicipalityData = unstable_cache(
       available_in_vow: true,
     }),
     supabase.from('municipalities').select('id, name, slug').eq('area_id', areaId).order('name'),
+    // LANE-B BUILD 2 (2026-07-09): resolve neighbourhoods for this muni
+    // via municipality_neighbourhoods join. Neighbourhoods are Toronto-
+    // scoped in production data; munis without mappings resolve to []
+    // and silent-omit at render time. NULL slug rows filtered before use.
+    supabase
+      .from('municipality_neighbourhoods')
+      .select('neighbourhoods(id, name, slug, is_active)')
+      .eq('municipality_id', municipalityId),
   ])
   const area = areaResult.data
   const communities = communitiesResult.data || []
@@ -205,7 +214,16 @@ const getMunicipalityData = unstable_cache(
     slug: m.slug,
   }))
 
-  return { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities }
+  // LANE-B BUILD 2: neighbourhoods for this muni. Flatten the nested
+  // join shape; require slug + is_active. Alphabetical, no cap needed
+  // — Toronto has <200 nbhs; other munis usually 0.
+  const neighbourhoods = ((neighbourhoodsResult as any)?.data || [])
+    .map((row: any) => row.neighbourhoods)
+    .filter((n: any) => n && n.slug && n.is_active && n.name)
+    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    .map((n: any) => ({ name: n.name, slug: n.slug }))
+
+  return { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities, neighbourhoods }
   },
   ['municipality-data'],
   { revalidate: 300, tags: ['municipality'] }
@@ -245,7 +263,7 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
   if (tenantId) {
     resolvedAgentId = await resolveAgentForContext({ municipality_id: municipality.id, tenant_id: tenantId })
   }
-  const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities } = data
+  const { area, communities, buildingCount, initialListings, counts, enrichedCommunities, siblingMunicipalities, neighbourhoods } = data
   const areaHref = area ? '/' + area.slug : '#'
 
   // C8a/D13 -- tenant for assistantName threading
@@ -334,6 +352,28 @@ export default async function MunicipalityPage({ municipality }: MunicipalityPag
             />
             <WalliamCTA context={municipality.name} assistantName={assistantName} brandName={brandName} wordmarkStyle={wordmarkStyle} />
             <CharliePageContext municipality_id={municipality.id} municipality_slug={municipality.slug} area_id={municipality.area_id} />
+          </div>
+        )}
+
+        {/* LANE-B BUILD 2 (2026-07-09): crawlable Muni → Neighbourhoods
+            path. Uses municipality_neighbourhoods join. Toronto is the
+            neighbourhood-bearing muni today; every other muni silently
+            omits (empty array). Real neighbourhoods.slug → same
+            /toronto/{slug} target the mega-menu points at. */}
+        {neighbourhoods && neighbourhoods.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-xl font-semibold mb-4">Neighbourhoods in {municipality.name}</h2>
+            <div className="flex flex-wrap gap-2">
+              {neighbourhoods.map((n: { name: string; slug: string }) => (
+                <a
+                  key={n.slug}
+                  href={`/toronto/${n.slug}`}
+                  className="inline-block px-3 py-1.5 text-sm text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                >
+                  {n.name}
+                </a>
+              ))}
+            </div>
           </div>
         )}
 

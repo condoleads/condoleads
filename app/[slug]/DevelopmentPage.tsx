@@ -156,21 +156,42 @@ export default async function DevelopmentPage({ params, development }: Developme
   // community_id → municipality. Used to derive locality-scoped copy in
   // DevelopmentSEO (replaces hardcoded "Toronto"). NULL when unresolvable
   // → all locality-scoped phrases omit cleanly. Rule Zero #1 sibling closed.
+  //
+  // LANE-B BUILD 2 (2026-07-09): extend the resolution to also fetch
+  // community + area with slugs. Powers the crawlable up-link chain
+  // rendered below the hero. NULL levels drop cleanly. No fabrication —
+  // if a building lacks community_id or the community lacks
+  // municipality_id, the level omits.
   let _devLocalityName: string | null = null
+  let _devGeoChain: {
+    community: { name: string; slug: string } | null
+    muni: { name: string; slug: string } | null
+    area: { name: string; slug: string } | null
+  } = { community: null, muni: null, area: null }
   const _firstBldg = buildings[0]
   if (_firstBldg?.community_id) {
     const { data: _comm } = await supabase
       .from('communities')
-      .select('municipality_id')
+      .select('name, slug, municipality_id')
       .eq('id', _firstBldg.community_id)
       .single()
+    if (_comm?.name && _comm?.slug) _devGeoChain.community = { name: _comm.name, slug: _comm.slug }
     if (_comm?.municipality_id) {
       const { data: _muni } = await supabase
         .from('municipalities')
-        .select('name')
+        .select('name, slug, area_id')
         .eq('id', _comm.municipality_id)
         .single()
       if (_muni?.name && _muni.name.trim().length > 0) _devLocalityName = _muni.name
+      if (_muni?.name && _muni?.slug) _devGeoChain.muni = { name: _muni.name, slug: _muni.slug }
+      if (_muni?.area_id) {
+        const { data: _area } = await supabase
+          .from('treb_areas')
+          .select('name, slug')
+          .eq('id', _muni.area_id)
+          .single()
+        if (_area?.name && _area?.slug) _devGeoChain.area = { name: _area.name, slug: _area.slug }
+      }
     }
   }
 
@@ -388,6 +409,28 @@ export default async function DevelopmentPage({ params, development }: Developme
           </div>
 
         </div>
+
+        {/* LANE-B BUILD 2 (2026-07-09): crawlable Development → up-chain
+            (community/muni/area) using the resolved _devGeoChain. Real
+            slugs, NULL levels omitted. Mirrors the same shape SEODescription
+            emits on BuildingPage. */}
+        {(_devGeoChain.community || _devGeoChain.muni || _devGeoChain.area) && (
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <p className="text-slate-700 leading-relaxed">
+              Explore more real estate in the wider area:
+              {_devGeoChain.community && (
+                <> <Link href={`/${_devGeoChain.community.slug}`} className="text-blue-700 hover:underline">{_devGeoChain.community.name}</Link></>
+              )}
+              {_devGeoChain.muni && (
+                <>{_devGeoChain.community ? ',' : ''} <Link href={`/${_devGeoChain.muni.slug}`} className="text-blue-700 hover:underline">{_devGeoChain.muni.name}</Link></>
+              )}
+              {_devGeoChain.area && (
+                <>{(_devGeoChain.community || _devGeoChain.muni) ? ' and the' : ''} <Link href={`/${_devGeoChain.area.slug}`} className="text-blue-700 hover:underline">{_devGeoChain.area.name}</Link> area</>
+              )}
+              .
+            </p>
+          </div>
+        )}
 
         <DevelopmentSEO
           developmentName={development.name}
