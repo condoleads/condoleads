@@ -551,7 +551,19 @@ function mapCompleteDLAFields(listing: any, buildingId: string) {
     is_current: true,
     last_seen_at: new Date().toISOString(),
     last_modified_at: parseTimestamp(listing.ModificationTimestamp) || new Date().toISOString(),
-    created_at: new Date().toISOString(),
+    // LANE-B-SYNC-ACCURACY-FIX Phase 1b (2026-07-10): created_at OMITTED
+    // from the payload. Rationale: this object is passed to
+    // supabase.upsert(mapped, { onConflict: 'listing_key' }) which becomes
+    // `INSERT ... ON CONFLICT (listing_key) DO UPDATE SET <every column
+    // from payload> = EXCLUDED.<column>` server-side. Including created_at
+    // here overwrites the existing row's creation timestamp on every UPSERT
+    // that hits the UPDATE branch — corrupts "when was this row born".
+    // DB column `mls_listings.created_at` has `DEFAULT now()` (verified via
+    // information_schema.columns this session), so INSERT still gets a
+    // fresh created_at; UPDATE preserves the existing value because the
+    // column is absent from the SET list.
+    // updated_at IS kept in the payload — we WANT it to change on every
+    // upsert to signal "sync touched this row".
     updated_at: new Date().toISOString(),
     last_synced_at: new Date().toISOString(),
     sync_source: 'dla'
@@ -716,8 +728,13 @@ async function fetchPropTxListingsForBuilding(building: any): Promise<any[]> {
     .then(r => r.json()).then(d => d.value || []).catch(() => []);
   allListings.push(...activeResults);
 
-  // Strategy 2+3: Completed transactions
-  const completedFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart} and (StandardStatus eq 'Closed' or StandardStatus eq 'Sold' or StandardStatus eq 'Leased' or MlsStatus eq 'Sold' or MlsStatus eq 'Sld' or MlsStatus eq 'Leased' or MlsStatus eq 'Lsd')`;
+  // Strategy 2+3: All non-active listings (Closed/Sold/Leased/Cancelled/Withdrawn/Expired/Pending)
+  // LANE-B-SYNC-ACCURACY-FIX Phase 1 (2026-07-10): broadened from
+  // (Closed OR Sold OR Leased) to `ne 'Active'` to match the API route's
+  // fdd603c fix. Non-Active PropTx rows now survive into proptxInactive
+  // where the INACTIVE UPSERT (below) moves matching DB rows Active→Inactive
+  // via onConflict:'listing_key' (UUID preserved, child rows intact).
+  const completedFilter = `StreetNumber eq '${streetNumber}'${streetNamePart}${cityPart} and StandardStatus ne 'Active'`;
   const completedUrl = `${baseUrl}Property?$filter=${encodeURIComponent(completedFilter)}&$top=15000`;
   const completedResults = await fetchWithRetry(completedUrl, { headers }, 3, `Building completed: ${building.building_name}`)
     .then(r => r.json()).then(d => d.value || []).catch(() => []);
@@ -743,10 +760,12 @@ async function fetchPropTxListingsForBuilding(building: any): Promise<any[]> {
     const cw = city.toLowerCase().trim().split(' ')[0];
     unique = unique.filter(l => (l.UnparsedAddress || '').toLowerCase().includes(cw) || (l.City || '').toLowerCase().includes(cw));
   }
-  // Filter 4: Exclude unwanted statuses
-  const excludedStatuses = ['Pending', 'Cancelled', 'Withdrawn'];
-  const excludedMls = ['Cancelled', 'Withdrawn', 'Pend'];
-  unique = unique.filter(l => !excludedStatuses.includes(l.StandardStatus) && !excludedMls.includes(l.MlsStatus));
+  // LANE-B-SYNC-ACCURACY-FIX Phase 1 (2026-07-10): FILTER 4 REMOVED — all
+  // statuses now included (Cancelled, Withdrawn, Pending, Expired, etc.).
+  // Aligned to API route's fdd603c fix ("Incremental sync now captures ALL
+  // statuses"). Non-Active PropTx rows survive into proptxInactive where
+  // the INACTIVE UPSERT (line ~883-891) moves matching DB rows Active→
+  // Inactive via onConflict:'listing_key' — preserves UUID + child rows.
 
   return unique;
 }
@@ -807,7 +826,11 @@ async function backfillListingGeoIds(buildingId: string): Promise<string[]> {
 // SYNC SINGLE BUILDING (EXACT logic from incremental-sync route)
 // =====================================================
 
-async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
+// LANE-B-SYNC-ACCURACY-FIX Phase 1 (2026-07-10): exported so a focused
+// per-building test runner can invoke this without triggering the full
+// nightly loop. Production entry point remains runBuildingsIncremental
+// (line ~925).
+export async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
   added: number; updated: number; removed: number; unchanged: number;
   mediaAdded: number; roomsAdded: number; openHousesAdded: number;
 }> {
@@ -859,15 +882,22 @@ async function syncOneBuilding(building: any, triggeredBy: string): Promise<{
         else { result.added++; newActive.push({ savedListing: data, originalListing: ptx }); }
       }
     }
-    // DELETE stale active (only if PropTx returned results)
-    if (proptxActive.length > 0) {
-      for (const [key, db] of dbMap) {
-        if (!proptxMap.has(key)) {
-          await supabase.from('mls_listings').delete().eq('id', db.id);
-          result.removed++;
-        }
-      }
-    }
+    // LANE-B-SYNC-ACCURACY-FIX Phase 1 (2026-07-10): DELETE branch removed
+    // per operator: system does NOT delete listings; active→inactive
+    // transitions are handled by the INACTIVE UPSERT (line ~883-891 below)
+    // via onConflict:'listing_key' — preserves UUID, preserves child rows
+    // (media, rooms, open_houses, agent_assignments), preserves external
+    // FK targets (leads, favorites, reconcile_corrections).
+    //
+    // Aged-out rows (PropTx no longer returns the key at all) are NOT
+    // handled here — they need a retry-then-inactivate mechanism with a
+    // counter field to distinguish "transient PropTx miss" from
+    // "permanently gone". That is Phase 2 (separate dispatch).
+    //
+    // result.removed stays initialized at 0 (line ~815); log line at
+    // ~958 will show "🗑️0 removed" every run — that is truthful. Phase 2
+    // may replace or repurpose the counter.
+
     // Fetch enhanced data + save media/rooms/OH for new active
     if (newActive.length > 0) {
       await fetchEnhancedDataForBuildings(newActive.map(n => n.originalListing));
