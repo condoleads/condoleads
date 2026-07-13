@@ -39,8 +39,12 @@ interface BrandingClientProps {
 }
 
 export default function BrandingClient({ initialAgents }: BrandingClientProps) {
-  const [agents, setAgents] = useState<Agent[]>(initialAgents.filter(a => a.custom_domain))
-  const [allAgents] = useState<Agent[]>(initialAgents)
+  // HARDEN 2026-07-12: show ALL agents, not just those with a custom_domain.
+  // Previously agents whose custom_domain was nulled (accident or intent)
+  // disappeared from the table — making the field un-repairable from the UI.
+  // Now every agent renders; the "Custom Domain" cell shows "Not set" for
+  // domain-less agents with an "Add" button to set one.
+  const [agents, setAgents] = useState<Agent[]>(initialAgents)
   const [searchTerm, setSearchTerm] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState<Partial<Agent>>({})
@@ -86,8 +90,12 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     if (!editingId) return
     setSaving(true)
 
+    // HARDEN 2026-07-12: custom_domain is intentionally NOT in this payload.
+    // Setting or removing a custom_domain flows through the dedicated
+    // handleAddCustomDomain / removeDomain paths, never through the generic
+    // save. That prevents an accidentally-cleared field from taking the
+    // tenant site 404. See app/admin/branding/actions.ts.
     const result = await updateAgentBranding(editingId, {
-      custom_domain: editForm.custom_domain || null,
       site_title: editForm.site_title || null,
       site_tagline: editForm.site_tagline || null,
       og_image_url: editForm.og_image_url || null,
@@ -138,10 +146,13 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     if (!result.success) {
       alert('Error adding domain: ' + result.error)
     } else {
-      const addedAgent = allAgents.find(a => a.id === selectedAgentId)
-      if (addedAgent) {
-        setAgents(prev => [...prev, { ...addedAgent, custom_domain: newDomain }])
-      }
+      // HARDEN 2026-07-12: update the agent in-place. Previously this pushed
+      // a duplicate row (worked only because the pre-fix table filtered out
+      // domain-less agents). Now that we show every agent, we mutate the
+      // existing entry.
+      setAgents(prev => prev.map(a =>
+        a.id === selectedAgentId ? { ...a, custom_domain: newDomain } : a
+      ))
       setShowAddModal(false)
       setSelectedAgentId('')
       setNewDomain('')
@@ -158,7 +169,15 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     if (!result.success) {
       alert('Error: ' + result.error)
     } else {
-      setAgents(prev => prev.filter(a => a.id !== agentId))
+      // HARDEN 2026-07-12: keep the row visible so the domain can be re-added.
+      // Previously the agent was filtered out of state after removal,
+      // hiding it from the UI and making re-configuration impossible without
+      // reloading the page.
+      setAgents(prev => prev.map(a =>
+        a.id === agentId
+          ? { ...a, custom_domain: null, site_title: null, site_tagline: null, og_image_url: null }
+          : a
+      ))
     }
   }
 
@@ -167,7 +186,10 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
     (a.custom_domain && a.custom_domain.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
-  const agentsWithoutDomain = allAgents.filter(a => !a.custom_domain)
+  // HARDEN 2026-07-12: was `allAgents.filter(...)` — but `allAgents` is gone
+  // now that we render every agent from a single state array. Derive the
+  // list for the "Add Custom Domain" dropdown from the live agents state.
+  const agentsWithoutDomain = agents.filter(a => !a.custom_domain)
 
   return (
     <div className="p-8">
@@ -289,15 +311,26 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
                         <div className="text-xs text-gray-500">{agent.subdomain}.condoleads.ca</div>
                       </td>
                       <td className="px-6 py-4">
-                        <a
-                          href={`https://${agent.custom_domain}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-purple-600 hover:underline flex items-center gap-1 font-medium"
-                        >
-                          <Globe className="w-4 h-4" />
-                          {agent.custom_domain}
-                        </a>
+                        {agent.custom_domain ? (
+                          <a
+                            href={`https://${agent.custom_domain}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-600 hover:underline flex items-center gap-1 font-medium"
+                          >
+                            <Globe className="w-4 h-4" />
+                            {agent.custom_domain}
+                          </a>
+                        ) : (
+                          // HARDEN 2026-07-12: domain-less agents used to be
+                          // filtered out of the table entirely. They now
+                          // render with a visible "Not set" marker and can
+                          // have a domain added via the top-right button.
+                          <span className="text-gray-400 italic flex items-center gap-1">
+                            <Globe className="w-4 h-4" />
+                            Not set
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         {agent.site_title ? (
@@ -324,13 +357,17 @@ export default function BrandingClient({ initialAgents }: BrandingClientProps) {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => removeDomain(agent.id)}
-                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
-                            title="Remove Domain"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
+                          {agent.custom_domain && (
+                            // HARDEN 2026-07-12: only show the Remove Domain
+                            // button when there IS a domain to remove.
+                            <button
+                              onClick={() => removeDomain(agent.id)}
+                              className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+                              title="Remove Domain"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </>

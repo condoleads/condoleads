@@ -122,7 +122,18 @@ export async function PUT(
   if (brokerage_address !== undefined) update.brokerage_address = brokerage_address
   if (license_number !== undefined) update.license_number = license_number
   if (subdomain !== undefined) update.subdomain = subdomain
-  if (custom_domain !== undefined) update.custom_domain = custom_domain || null
+  // HARDEN 2026-07-12: only accept EXPLICIT changes. Empty string ('') is a
+  // client-side "field not touched" signal from forms (default value of a
+  // cleared/blank input) — do NOT coerce it to NULL, or the tenant root
+  // agent's routing domain gets wiped and the whole site 404s. To actually
+  // remove a domain, callers must send explicit `null`. To set one, send a
+  // non-empty string.
+  if (custom_domain === null) {
+    update.custom_domain = null
+  } else if (typeof custom_domain === 'string' && custom_domain.trim() !== '') {
+    update.custom_domain = custom_domain.trim()
+  }
+  // else: leave alone (undefined OR empty-string → preserve existing value)
   if (bio !== undefined) update.bio = bio || null
   if (profile_photo_url !== undefined) update.profile_photo_url = profile_photo_url || null
   if (notification_email !== undefined) update.notification_email = notification_email

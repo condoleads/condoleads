@@ -5954,5 +5954,1290 @@ Written to production DB this session (all operator-approved, all restored):
 
 **HOLD PUSH** — amended commit staged locally only. Diff shown for operator review; push withheld pending approval.
 
+#### 10-BUILDING BASELINE (pre-broad-fix) — 2026-07-10 UTC ~13:30
+
+Read-only baseline snapshot of 10 buildings, DB vs PropTx vs Page, both transaction types. Establishes the reference point BEFORE the next full nightly runs the fixed code (6c904f0) across all ~9,835 buildings. Post-baseline validation will re-run this identical probe and count the reduction. Backup: `docs/W-MARKETING-TRACKER.md.backup_10-BUILDING-BASELINE_20260710_140000`. Zero writes.
+
+##### STEP 0 — Sync timing context
+
+- **Commit `6c904f0` (Phase 1 amended) pushed at 2026-07-10 ~10:20 UTC** this session.
+- **Nightly cron schedule**: 07:00 UTC daily (`.github/workflows/nightly-sync.yml:4`).
+- **Today's nightly currently in progress at probe time (~13:30 UTC)**: 66 buildings synced since 10:00 UTC per `sync_history`. Nightly runs homes-sync first (up to 6h) → buildings-sync starts after. Because the buildings-sync job's `actions/checkout@v4` ran AFTER the push, **currently-running nightly buildings-sync IS using the fixed code**. Some buildings are already reconciled; others (last_synced_at older than today) are still pre-fix state.
+- Race note: while probing, the nightly may sync one of the pre-fix buildings mid-probe. `last_synced_at` was captured before the DB/PropTx probes for each building.
+
+##### STEP 1 — 10 buildings selected
+
+4 known cases + 6 diverse (via muni sampling to get real slugs from the DB with Active listings). Post-fix classification based on `last_synced_at > 2026-07-10T10:00:00Z`.
+
+| # | Building | id (short) | last_synced_at | Post-fix code? |
+|---|---|---|---|---|
+| 1 | **70 Princes St, Toronto C08** (control) | `a1eeb845` | 2026-07-10 10:10 UTC | **YES** (manual test) |
+| 2 | 55 Stewart St, Toronto (Thompson) | `fa7b53af` | 2026-07-07 12:49 UTC | no |
+| 3 | 55 E Liberty St, Toronto C01 | `3a188ae4` | 2026-07-06 11:42 UTC | no |
+| 4 | 101 Erskine Ave, Toronto C10 | `4d16cca3` | 2026-07-06 13:11 UTC | no |
+| 5 | 4015 The Exchange, Mississauga | `319df192` | 2026-07-07 16:18 UTC | no |
+| 6 | 9699 Jane Street, Vaughan | `644f78d4` | 2026-07-05 12:57 UTC | no |
+| 7 | 7165 Yonge St, Markham (World on Yonge) | `24d46957` | 2026-07-08 12:56 UTC | no |
+| 8 | 15 Lynch St, Brampton (Symphony) | `34b22cb6` | 2026-07-07 13:53 UTC | no |
+| 9 | 2 Clairtrell Rd, Toronto C14 (Bayview Mansions) | `0387c875` | 2026-07-07 15:15 UTC | no |
+| 10 | **5 Rowntree Rd NE, Toronto W10** (Platinum on Humber) | `71bdd53a` | 2026-07-10 11:01 UTC | **YES** (ongoing nightly) |
+
+##### STEP 2 — 3-way per building (DB vs PropTx vs Page)
+
+DB: `SELECT count(*) FROM mls_listings WHERE building_id=? AND standard_status='Active'` split by `transaction_type`.
+PropTx: `Property?$filter=StreetNumber eq '?' and contains(StreetName,'?') and contains(City,'?') and StandardStatus eq 'Active'` — same first-word-street + first-word-city loose match the sync uses (by design per CLAUDE.md). Client-side re-filter on `StreetNumber === ?`.
+Page: matches DB (verified in prior dispatches — the building-page hero-count code path reads `standard_status='Active'` directly).
+
+| # | Building | Post-fix? | DB Sale | DB Lease | PropTx Sale | PropTx Lease | DB-only stale (S/L) | PropTx-only new (S/L) |
+|---|---|---|---:|---:|---:|---:|---|---|
+| 1 | 70 Princes | YES | 7 | 14 | 7 | 14 | 0 / 0 | 0 / 0 |
+| 2 | 55 Stewart (Thompson) | no | 4 | 1 | 4 | 0 | 1 / 1 | 1 / 0 |
+| 3 | 55 E Liberty (C01) | no | 34 | 82 | 105 | 158 | 10 / 33 | 81 / 109 |
+| 4 | 101 Erskine (C10) | no | 5 | 6 | 6 | 8 | 0 / 0 | 1 / 2 |
+| 5 | 4015 The Exchange (Miss) | no | 1 | 11 | 1 | 14 | 0 / 0 | 0 / 3 |
+| 6 | 9699 Jane (Vaughan) | no | 0 | 1 | 0 | 1 | 0 / 0 | 0 / 0 |
+| 7 | 7165 Yonge (Markham) | no | 10 | 14 | 9 | 16 | 1 / 0 | 0 / 2 |
+| 8 | 15 Lynch (Brampton) | no | 4 | 5 | 4 | 4 | 0 / 1 | 0 / 0 |
+| 9 | 2 Clairtrell (C14) | no | 4 | 2 | 4 | 2 | 0 / 0 | 0 / 0 |
+| 10 | 5 Rowntree Rd NE (W10) | YES | 4 | 2 | 4 | 2 | 0 / 0 | 0 / 0 |
+
+Page column intentionally omitted — verified in prior dispatches that Page == DB exactly (BuildingPage's hero-count filter at `app/[slug]/BuildingPage.tsx:208-209` reads `standard_status === 'Active'`). Page numbers = DB Sale / DB Lease for every row.
+
+##### STEP 3 — classification of stale rows
+
+Per-key PropTx probe (`ListingKey eq '<key>'`) on all 47 stale rows across the 4 buildings with staleness. `NOT FOUND` = aged-out (PropTx returns 0 rows); any status other than `Active` = terminal (Phase 1 will fix on next sync).
+
+**55 Stewart** — all 2 stale rows:
+- `C12629558` (sale) — **aged-out** (Phase 2 fixes)
+- `C12628580` (lease) — **aged-out** (Phase 2 fixes)
+
+**55 E Liberty** — sampled first 20 of 43 stale rows:
+- 12 keys returning StandardStatus=Cancelled/MlsStatus=Terminated (Phase 1 fixes)
+- 1 key returning StandardStatus=Withdrawn/MlsStatus=Suspended (Phase 1 fixes — Withdrawn is now included post-Filter-4-removal)
+- 7 keys returning NOT FOUND (Phase 2 fixes)
+- 0 filter-miss (all accounted for)
+- **Sample ratio: 65% Phase 1 / 35% Phase 2.** Extrapolated to full 43: ~28 Phase 1 + ~15 Phase 2. **Claimed, unverified — full-per-key probe not run for the 23 unsampled keys.**
+
+**7165 Yonge** — 1 stale row:
+- `N12710664` (sale) — **Cancelled/Terminated** (Phase 1 fixes)
+
+**15 Lynch** — 1 stale row:
+- `W12771960` (lease) — **Cancelled/Terminated** (Phase 1 fixes)
+
+##### STEP 4 — Baseline summary
+
+**Building-level outcomes:**
+
+| Class | Count | Buildings |
+|---|---:|---|
+| MATCH (DB==PropTx active count, 0 stale) | 4 | #1 70 Princes ✱, #6 9699 Jane, #9 2 Clairtrell, #10 5 Rowntree ✱ |
+| STALE (DB carries dead listings) | 4 | #2 55 Stewart, #3 55 E Liberty, #7 7165 Yonge, #8 15 Lynch |
+| MISSING-only (0 stale but DB missing new PropTx listings) | 2 | #4 101 Erskine, #5 4015 The Exchange |
+
+✱ = post-fix code applied. **Both post-fix buildings are MATCH.**
+
+**Row-level totals across the 10:**
+
+| Metric | Sale | Lease | Total |
+|---|---:|---:|---:|
+| DB Active | 69 | 138 | **207** |
+| PropTx Active (address-matched, StreetName-first-word-loose) | 144 | 219 | **363** |
+| DB-only stale rows | 12 | 35 | **47** |
+| PropTx-only listings DB doesn't have | 83 | 116 | **199** |
+
+**Stale rows breakdown (from Step 3 classification — 24 keys sampled of 47 total):**
+
+| Category | Sampled count | Extrapolated to 47 (claimed, unverified) |
+|---|---:|---:|
+| Phase 1 fixes (Cancelled/Withdrawn/Terminated) | 14 | ~28-32 |
+| Phase 2 fixes (aged-out — PropTx returns 0 rows) | 10 | ~15-19 |
+
+Post-next-nightly expectation: Phase 1 stale drops to ~0 for all 4 pre-fix buildings with staleness (Cancelled/Withdrawn/Terminated rows will transition via INACTIVE UPSERT). Phase 2 stale (aged-out) remains until Phase 2 ships (retry-then-inactivate + counter field).
+
+**PropTx-only "new" listings (199 total)** — DB is missing these Active listings that PropTx has. This is a separate concern from staleness — the sync's Strategy 1 (activeFilter) has always fetched all statuses at the address, so missing 199 Active listings suggests either (a) they were newly listed in PropTx after the last sync of those buildings (expected pipeline lag; next nightly picks up), or (b) an address-filter over-inclusion is inflating PropTx-side counts with listings that don't actually belong to these buildings (probable for the 190 missing at 55 E Liberty, where StreetName first-word 'E' matches many streets). **Claimed, unverified — not investigated this dispatch; scope is baseline only.**
+
+##### Post-fix expectation (to be validated after next nightly)
+
+- **Buildings#1, #10 (post-fix already)**: unchanged, stay MATCH.
+- **Buildings #2, #7, #8**: their stale-Cancelled/Withdrawn rows will transition Active→Cancelled/Withdrawn on next nightly. Stale-aged-out rows (2 on 55 Stewart) will remain.
+- **Building #3 (55 E Liberty)**: stale-Cancelled/Withdrawn (~28-32 of 43) will transition. Stale-aged-out (~15-19 of 43) will remain. Missing-new listings will be added (if they legitimately belong to the address).
+- **Buildings #4, #5, #6, #9**: no staleness pre-existing. Missing-new listings will be added.
+
+**Expected total stale post-next-nightly (Phase 1 outcome):** 47 → ~15-19 (all remaining are aged-out awaiting Phase 2).
+
+##### Claimed, unverified — needs specific verification
+
+- Full per-key classification of the 23 unsampled stale keys at 55 E Liberty (sampled 20/43; extrapolated the ratio). Full sweep would refine the exact Phase 1 vs Phase 2 split.
+- Whether the 190 PropTx-only "missing" listings at 55 E Liberty are legitimate 55-East-Liberty rows or address-filter contamination from other "55 <E-word> Street" addresses in Toronto. Distinguishing requires per-key address inspection.
+- Post-nightly re-validation of the same 10 buildings after the next nightly completes (~2026-07-11 08:00 UTC or later depending on homes-sync completion time). Not run this dispatch.
+
+**STOP.** Zero writes.
+
+#### 55 E LIBERTY CONTAMINATION CHECK — SEPARATE BUG DISCOVERED (2026-07-10)
+
+Read-only investigation of the "199 PropTx-only missing" flagged in the 10-building baseline. Result: **the "missing" is 99% address-filter contamination on the PropTx side, AND a separate ingestion bug on the DB side** (a phantom duplicate building has hoovered up 119 unrelated 55-X-street Toronto listings). Two distinct issues, both real. Neither is Phase 1 or Phase 2 scope. Zero writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_55-E-LIBERTY-CONTAM_20260710_143000`.
+
+##### 1 — Exact query the baseline used (verbatim)
+
+Building record used: `slug='55-e-liberty-street-toronto-c01'`, `street_number='55'`, **`street_name='E Liberty Street'`**, `city_district='Toronto C01'`.
+
+Baseline probe splits street_name by space and takes the first word: `'E Liberty Street'.split(' ')[0]` → **`'E'`** — a single letter. City first-word: `'Toronto'`. Then the OData filter (byte-verified this session):
+```
+StreetNumber eq '55'
+and (contains(StreetName,'e') or contains(StreetName,'E') or contains(StreetName,'E'))
+and (contains(City,'toronto') or contains(City,'Toronto') or contains(City,'TORONTO'))
+and StandardStatus eq 'Active'
+```
+
+`contains(StreetName,'e')` matches nearly every street name in Toronto (Sheppard, Bayview, Nugget, Mercer, Cooper, Yonge, Charles, Erskine, Eglinton, etc. — all contain 'e'). Filter is effectively a no-op for street disambiguation. **This is the sync's exact same filter builder logic (`.split(' ')[0]` at lines 700, 706 of `scripts/sync-buildings-incremental.ts`).**
+
+##### 2 — Inspect what PropTx returned (real StreetName + StreetNumber)
+
+Ran the exact loose query, post-client-strict `StreetNumber === '55'`. Result:
+
+- Raw rows: 266 (Active, StreetNumber=55, StreetName contains 'e'/'E', City contains 'Toronto')
+- **Genuine 55-East-Liberty** (regex `/^(east|e\.?)\s+liberty/i` on StreetName): **9** (6 sale + 3 lease)
+- **Contamination** (StreetName does NOT match East/E Liberty): **257**
+
+Top contaminant streets (all number 55, all Toronto, all Active): Charles (36), Mercer (26), Town Centre (25), Cooper (23), Nugget (20), Ann O'Reilly (17), Bremner (7), De Boers (7), Eglinton (6), Regent Park (6), Centre (6), Stewart (5), Adelaide (4), plus ~50 other streets each 1-3 rows.
+
+**PropTx canonical form of the real building** confirmed via targeted `StreetName eq '<variant>'` queries:
+- `StreetName eq 'E Liberty'`: 0 rows
+- **`StreetName eq 'East Liberty'`: 9 rows** — this is the actual PropTx canonical form.
+- `StreetName eq 'E. Liberty'`: 0 rows
+
+##### 3 — Genuine cross-check: DB missing, or contamination artifact?
+
+The 9 genuine 55-East-Liberty active listing_keys, per-key looked up in DB:
+
+| listing_key | tagged to building | Status |
+|---|---|---|
+| C13190324 | `bliss-condos-55-east-liberty-street-toronto` | Active For Sale |
+| C13427404 | `bliss-condos-55-east-liberty-street-toronto` | Active For Sale |
+| C12751276 | `bliss-condos-55-east-liberty-street-toronto` | Active For Sale |
+| C13446440 | `bliss-condos-55-east-liberty-street-toronto` | Active For Sale |
+| C13496566 | `bliss-condos-55-east-liberty-street-toronto` | Active For Sale |
+| C13528898 | `bliss-condos-55-east-liberty-street-toronto` | Active For Lease |
+| **C13538300** | **NOT IN DB** | (very new, Active For Sale in PropTx) |
+| C13450380 | `bliss-condos-55-east-liberty-street-toronto` | Active For Lease |
+| **C13544002** | **NOT IN DB** | (very new, Active For Lease in PropTx) |
+
+**7 of 9 genuine 55-East-Liberty listings ARE in DB, correctly tagged to the CORRECT building `bliss-condos-55-east-liberty-street-toronto` (id=3092d8db).** 2 of 9 are not in DB at all — probably very new (next nightly should pick them up).
+
+**"199 missing" from the baseline collapses to 2 truly-missing genuine 55-East-Liberty listings + 197 that were address-filter contamination.**
+
+##### 4 — The SECOND bug: phantom duplicate building has hoovered up 119 unrelated listings
+
+There are **TWO** buildings in DB for "55 East Liberty":
+
+| Slug | id | building_name | street_name | Active count | Total rows |
+|---|---|---|---|---:|---:|
+| **`bliss-condos-55-east-liberty-street-toronto`** | `3092d8db` | Bliss Condos | **East Liberty Street** | **9** ✓ | 151 |
+| **`55-e-liberty-street-toronto-c01`** ⚠ phantom | `3a188ae4` | 55 E Liberty | **E Liberty Street** | **119** ⚠ | 821 |
+
+The phantom's 119 Active rows are ALL unrelated Toronto listings that share `StreetNumber=55`:
+`E13499592`: 55 Nugget Avenue 212 (M1S); `E13503902`: 55 Nugget Avenue 214 (M1S); `E13249946`: 55 Collinsgrove Road 212 (M1E); `E13165184`: 55 Ridgecrest Drive (M1W); `C13503630`: 55 Hemford Crescent (M3B); `E12869616`: 55 Town Centre Court 109a (M1P); `E13418446`: 55 Guildcrest Drive H55 (M1E); `C13131886`: 55 Cooper Street 7112 (C08); `E13430188`: 55 Frater Avenue (E03); `C13473252`: 55 Foxwarren Drive (C15) — (109 more similar).
+
+**Zero of the 119 Active rows tagged to the phantom are actually at 55 East Liberty St.**
+
+Since `mls_listings.listing_key` is UNIQUE, each listing has exactly one `building_id`. So the 119 listings that "really" belong to (say) 55 Cooper Street, 55 Nugget Avenue, 55 Mercer Street, etc. are exclusively tagged to the phantom. When a user visits `55-e-liberty-street-toronto-c01`'s page, they see 119 unrelated addresses. When a user visits the CORRECT 55-Cooper building (`sugar-wharf-west-condos-55-cooper-street-toronto`, active count 24), 55-Mercer (`no55-mercer-condos-55-mercer-street-toronto`, 27), or 55-Charles (`55c-bloor-yorkville-residences-...`, 33), those buildings' displayed active counts may be **missing listings hijacked by the phantom**. (Not verified per-key which "real" building each hijacked listing belongs to — needs correction pass.)
+
+Real 55-X buildings verified to exist in DB:
+- `55c-bloor-yorkville-residences-55-charles-street-toronto-c08` — Active 33 (correctly ingesting)
+- `55-charles-street-e-toronto-c01` — Active 0 (also phantom-ish? or just empty)
+- `no55-mercer-condos-55-mercer-street-toronto` — Active 27
+- `sugar-wharf-west-condos-55-cooper-street-toronto` — Active 24
+- No 55-Nugget building — 55-Nugget listings tagged to phantom are orphaned (no real building to display them on).
+
+**Root cause of the phantom:** the sync's `.split(' ')[0]` on `street_name = 'E Liberty Street'` produces `'E'` — a single-letter first word. The `contains(StreetName, 'E')` OData filter matches nearly every street name. Every 55-X-Toronto-Active row in PropTx passes the sync's Filter 1 (StreetNumber = '55') + Filter 2 (streetname contains 'E' loose) + Filter 3 (city contains 'Toronto' loose) + Filter 4 (Phase 1 removed — now includes ALL statuses). Then the sync tags each hit with `building_id: 3a188ae4` (the phantom). Historical: phantom created 2026-02-28, accumulated 821 total rows via repeated nightly syncs.
+
+##### 5 — Scope: how many buildings are at contamination risk
+
+Buildings whose `street_name` first word is a single character (via `length(split_part(street_name, ' ', 1)) = 1`): **21 total**. Top by Active count NOW (much of it likely contamination):
+
+| first-letter | Active count | Slug |
+|:---:|---:|---|
+| 'O' | **131** | `rodeo-drive-condo-50-o-neill-road-w-toronto-c13` |
+| 'E' | **119** | `55-e-liberty-street-toronto-c01` ⚠ phantom |
+| 'E' | 53 | `75-e-liberty-street-toronto-c01` |
+| 'E' | 44 | `liberty-market-tower-135-e-liberty-street-toronto-c01` |
+| 'E' | 40 | `150-e-liberty-street-toronto-c01` |
+| 'E' | 29 | `49-e-liberty-street-toronto-c01` |
+| 'N' | 22 | `20-n-park-road-vaughan` |
+| 'N' | 12 | `7-n-park-road-vaughan` |
+| 'N' | 11 | `como-condos-600-n-service-rd-road-n-road-n-hamilton` |
+| 'N' | 8 | `30-n-park-road-vaughan` |
+| 'S' | 6 | `fontana-condos-99-s-town-centre-boulevard-markham` |
+| 'A' | 5 | `balsam-lake-club-...-19-a-west-street-n-kawartha-lakes` |
+| 'O' | 5 | `50-o-neil-road-toronto-c13` |
+| (~8 more each 0-1 active) | | |
+
+**~487 Active listings total** across the 21 at-risk buildings. Each of these buildings' next nightly sync (running the Phase-1-fixed code) will INCLUDE all statuses (Filter 4 removed) but STILL use loose first-word match — so the contamination will not shrink; if anything, it may grow (Cancelled/Withdrawn cross-address listings now also get tagged to the phantom).
+
+**Sync IS affected — this is not just a validation-method issue.** The sync's per-building PropTx query for these 21 buildings ingests unrelated listings and writes wrong `building_id` values. The Phase 1 fix I shipped does NOT address this — Phase 1 handled status transitions, not building-match accuracy.
+
+##### Answer: which case is 55 E Liberty?
+
+**BOTH.** The baseline's "199 PropTx-only missing" decomposes to:
+- **~197 = measurement artifact** (baseline's PropTx query used the same loose match the sync uses; 257 of 266 rows returned are unrelated addresses; only 9 are genuine 55 E Liberty; of those 9, 7 are correctly in DB tagged to Bliss Condos).
+- **2 = genuinely new listings not yet ingested** (C13538300, C13544002 — very new; next nightly should catch).
+
+But the investigation revealed a **separate, larger, pre-existing bug**:
+- The phantom building `55-e-liberty-street-toronto-c01` has hijacked **119 Active + ~702 historical listings** from unrelated 55-X Toronto addresses.
+- The phantom exists because the sync's loose `.split(' ')[0]` first-word filter on `'E Liberty Street'` yields a single-letter 'E' — matches nearly every street.
+- Scope: **21 buildings at risk** (any building with a single-letter first-word `street_name` — directional prefixes 'E', 'W', 'N', 'S', 'A', 'B', 'C', 'O' were observed). ~487 total Active listings across these 21 buildings, mostly contamination.
+
+##### What this changes for the fix roadmap
+
+- **Phase 1 (already shipped, `6c904f0`)**: unaffected. Status-transition fix is correct and orthogonal to the building-match bug.
+- **Phase 2 (aged-out retry-then-inactivate)**: unaffected.
+- **NEW Phase 3 candidate (not scoped this dispatch)**: building-match accuracy. Fix candidates (do NOT implement — for future scoping):
+  - Skip single-letter first words in the sync's street-name filter (fall back to full-street `contains(StreetName, '<full street_name>')`, OR require a minimum word length of 2, OR use the SECOND word if the first is a directional).
+  - Add a post-filter that requires `unparsedAddress.includes(<full street_name lowercase>)` — would drop 55 Nugget from the 55-E-Liberty response because "nugget" doesn't match "e liberty".
+  - Reconcile the phantom vs Bliss Condos duplicate (potentially merge or deprecate phantom).
+  - Backfill correction: for each of the 21 at-risk buildings, re-verify each row's `building_id` against a strict address match; re-tag or NULL wrongly-tagged rows. **Data write, gated.**
+
+##### Claimed, unverified
+
+- Whether the other 20 single-letter-first-word buildings (besides `55-e-liberty-street-toronto-c01`) actually show the same pattern (Active count dominated by unrelated addresses). Sampling this dispatch would need per-building probes; only the 55 E Liberty phantom was inspected end-to-end.
+- Whether "real" 55-Cooper / 55-Charles / 55-Mercer buildings are missing listings that got hijacked by the phantom (their Active counts of 24/33/27 are shown; but per-key `building_id` reconciliation was not done — listing_key UNIQUE means each key has exactly one `building_id`, so the phantom's 119 Active rows are exclusively tagged there and cannot ALSO be at the real buildings).
+
+**STOP.** Zero writes.
+
+#### BUILDING-MATCH BUG FULL SCOPE — 21 buildings + phantom reconciliation (2026-07-10)
+
+Read-only. Zero writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_BUILDING-MATCH-SCOPE_20260710_150000`. Sizes the full damage from the `.split(' ')[0]` single-letter first-word bug across all 21 at-risk buildings, before designing any fix.
+
+**Timing note:** probes ran mid-nightly (2026-07-10 ~14:00-15:00 UTC) while the ongoing sync was actively re-tagging listings. Row counts fluctuated during the probe window (phantom's Active went 119 → 313 while I was measuring). Numbers below are point-in-time snapshots — the general shape is stable but exact counts may shift by ±20% during the nightly's completion.
+
+##### 1 — Per-building genuine vs contaminated Active
+
+Query used: for each of the 21 single-letter-first-word buildings, `mls_listings WHERE building_id=? AND standard_status='Active'`. A row is "genuine" if `unparsed_address` contains the second word of the building's `street_name` (e.g., "Liberty" for "E Liberty Street"). Rough heuristic; exact per-key address matching would refine but not materially change the counts.
+
+| Building slug | first-letter | Active | Genuine | Contaminated |
+|---|:---:|---:|---:|---:|
+| `55-e-liberty-street-toronto-c01` ⚠ | 'E' | **313** | 9 | **304** |
+| `rodeo-drive-condo-50-o-neill-road-w-toronto-c13` ⚠ | 'O' | **131** | 17 | **114** |
+| `75-e-liberty-street-toronto-c01` ⚠ | 'E' | **99** | 12 | **87** |
+| `liberty-market-tower-135-e-liberty-street-toronto-c01` ⚠ | 'E' | **44** | 0 | **44** |
+| `150-e-liberty-street-toronto-c01` ⚠ | 'E' | **40** | 0 | **40** |
+| `49-e-liberty-street-toronto-c01` ⚠ | 'E' | **29** | 0 | **29** |
+| `7-n-park-road-vaughan` ⚠ | 'N' | 14 | 9 | 5 |
+| `como-condos-600-n-service-rd-road-n-road-n-hamilton` | 'N' | 11 | 8 | 3 |
+| `20-n-park-road-vaughan` ⚠ | 'N' | 11 | 1 | 10 |
+| `30-n-park-road-vaughan` ⚠ | 'N' | 8 | 0 | 8 |
+| `fontana-condos-99-s-town-centre-boulevard-markham` | 'S' | 6 | 6 | 0 |
+| `balsam-lake-club-...-19-a-west-street-n-kawartha-lakes` | 'A' | 5 | 0 | 5 |
+| `50-o-neil-road-toronto-c13` | 'O' | 5 | 0 | 5 |
+| `1217-n-muldrew-lake-road-out-of-area` | 'N' | 1 | 1 | 0 |
+| `4392-b-valdez-n-a-out-of-area` | 'B' | 1 | 1 | 0 |
+| (6 buildings with 0 Active) | — | 0 | 0 | 0 |
+| **TOTAL across 21** | | **718** | **64** | **654** |
+
+**91% of Active listings tagged to these 21 buildings are cross-address contamination.** Building pages for these 21 currently display wrong addresses to users.
+
+##### 2 — Duplicate/phantom pattern check
+
+For each of the 21, searched for a "correct" sibling building (same `street_number`, `street_name` matching the phantom's street WITHOUT the directional prefix — e.g., "E Liberty Street" phantom paired with "East Liberty Street" correct).
+
+**Confirmed phantom/correct pairs found:**
+
+| Phantom (single-letter first-word) | Correct sibling | Correct Active |
+|---|---|---:|
+| `55-e-liberty-street-toronto-c01` (313 Active) | `bliss-condos-55-east-liberty-street-toronto` | 2 (was 9 earlier, dropped mid-nightly) |
+| `75-e-liberty-street-toronto-c01` (99) | `liberty-lakeview-towers-75-east-liberty-street-toronto` | 1 (was 12 earlier) |
+| `150-e-liberty-street-toronto-c01` (40) | `liberty-place-condos-150-east-liberty-street-toronto` | 13 |
+| `49-e-liberty-street-toronto-c01` (29) | `liberty-central-by-the-lake-49-east-liberty-street-toronto` | 9 |
+| `liberty-market-tower-135-e-liberty-street-toronto-c01` (44) | 2 siblings: `-east-liberty-street-` (0) + `-liberty-street-` (13) |
+| `20-n-park-road-vaughan` (11) | `centre-park-condos-20-north-park-road-vaughan` | 6 |
+| `30-n-park-road-vaughan` (8) | `centre-park-condos-30-north-park-road-vaughan` | 2 |
+| `7-n-park-road-vaughan` (14) | `vista-at-thornhill-city-centre-7-north-park-road-vaughan` | 0 |
+| `fontana-condos-99-s-town-centre-boulevard-markham` (6) | `fontana-condos-99-south-town-centre-boulevard-markham` | 0 (twin sibling) |
+
+**~9-10 phantom/correct duplicate pairs identified.** Most on E Liberty (5) and N Park (3). The 55-E-Liberty phantom is not unique — it's the archetype of a wider pattern.
+
+**Twin dynamic observed live:** while the ongoing nightly ran, Bliss Condos Active dropped from 9 → 2, Liberty Lakeview (75) dropped 12 → 1. The phantoms are actively re-hijacking rows during their sync pass. Real buildings that sync LATER in the same nightly re-claim their rows, but the oscillation continues.
+
+##### 3 — Real buildings missing hijacked listings (sample of 15 from phantom 55-E-Liberty)
+
+Per-key inspection of 15 phantom-tagged Active rows. Since `listing_key` is UNIQUE (one `building_id` per key), a hijacked listing is ABSENT from its real building.
+
+| Sampled address | Real building in DB? | Real Active count (mid-nightly) | Hijacked? |
+|---|---|---:|---|
+| 55 Nugget Avenue 212 | NO — no 55-Nugget building in DB | — | orphan hijacked |
+| 55 Nugget Avenue 214 | NO | — | orphan hijacked |
+| 55 Delisle Avenue 903 | `the-carlyle-condos-55-delisle-avenue-toronto-c02` | **0** | hijacked |
+| 55 De Boers Drive 1207 | (spurious match — no real 55 De Boers) | — | orphan |
+| 55 Adelaide Street E 100 | NO | — | orphan hijacked |
+| 55 Charles Street E 4303 | `55-charles-street-e-toronto-c01` (itself likely a phantom-ish) | **0** | hijacked |
+| 55 Collinsgrove Road 212 | NO | — | orphan hijacked |
+| 55 Ridgecrest Drive | NO | — | orphan hijacked |
+| 55 Charles Street E 1504 | `55-charles-street-e-toronto-c01` | 0 | hijacked |
+| 55 Cooper Street 6008 | `sugar-wharf-west-condos-55-cooper-street-toronto` | **2** (was 24 in earlier probe) | hijacked |
+| 55 Mercer Street 605 | `no55-mercer-condos-55-mercer-street-toronto` | **3** (was 27 earlier) | hijacked |
+| 55 Cooper Street 7108 | `sugar-wharf-west-condos-55-cooper-street-toronto` | 2 | hijacked |
+| 55 Merchants Wharf N/A 620 | `aqualina-at-bayside-55-merchants-wharf-...` | **0** | hijacked |
+| 55 Mercer Street 2511 | `no55-mercer-condos-55-mercer-street-toronto` | 3 | hijacked |
+| 55 Charles Street E 1001 | `55-charles-street-e-toronto-c01` | 0 | hijacked |
+
+**Mix of two failure modes:**
+- **Hijacked from real building** (12 of 15): correct building exists in DB but shows drastically reduced Active count. `no55-mercer-condos` dropped 27→3 (24 listings hijacked). `sugar-wharf-west-condos-55-cooper` dropped 24→2. Real building pages show WRONG (deflated) inventory.
+- **Orphan hijacked** (3+ of 15): no correct building exists in DB (55 Nugget, 55 Ridgecrest, 55 Collinsgrove). These stay permanently tagged to the phantom; there's no alternate home for them.
+
+##### 4 — Total blast radius
+
+- **21 buildings** at risk (single-letter first-word `street_name`).
+- **~9-10 confirmed phantom/correct duplicate pairs** — the phantoms and their real siblings coexist in DB.
+- **718 Active listings tagged to the 21 phantoms** (point-in-time, mid-nightly).
+- **654 of those 718 (91%) are cross-address contamination** — being displayed on wrong building pages RIGHT NOW.
+- **6,544 historical (non-Active) rows tagged** to the 21 phantoms — includes Closed sales, Expired, Cancelled, Withdrawn. Much of that is also contamination (historical hijacking accumulated over months).
+- **DB-total Active**: ~96,019 (from prior recon). **Contaminated share: ~0.68% of all Active**. Small % of DB but 91% of the 21 affected buildings.
+- **Downstream damage**: real buildings (Bliss Condos, No55 Mercer, Sugar Wharf West, etc.) show DEFLATED Active counts to end-users because their listings were hijacked. Users see WRONG data on both phantom pages (wrong addresses) AND real pages (missing inventory).
+
+##### 5 — Phase 1 interaction: contamination growth
+
+Phase 1's Filter 4 removal broadens which PropTx statuses reach the sync's pool split. For a phantom, that means **Cancelled/Withdrawn/Expired cross-address listings now also flow to the phantom's inactive pool**.
+
+Evidence from live probe on phantom 55-E-Liberty (mid-nightly today):
+- Total tagged rows: **3,259** (Active 313, Closed 2390, Expired 452, Cancelled 94, Withdrawn 7, AUC 3).
+- **Rows touched today (updated_at >= 2026-07-10): 2,438** — the ongoing nightly re-tagged / newly-tagged this many rows.
+- Of those 2,438 touched today: 194 Active + **2,244 non-Active**.
+- The 2,244 non-Active rows touched today would have been EXCLUDED by pre-Phase-1 Filter 4. Phase 1 removed the filter — now they land in phantom's inactive pool.
+
+**Phase 1 confirmed to AMPLIFY historical contamination:** phantom 55-E-Liberty grew from ~821 total rows earlier this session to 3,259 rows during today's nightly. Most of the +2,438 growth is Cancelled/Closed/Expired cross-address listings that Phase 1's Filter 4 removal now allows through.
+
+**But Phase 1 is CORRECT for real buildings** — Cancelled listings SHOULD flow to the inactive pool via UPSERT. The problem is not Phase 1; it's that phantoms shouldn't exist. Phase 1 exposed the pre-existing latent bug at greater scale by removing the filter that was accidentally masking part of the damage.
+
+**Active-count contamination is Phase-1-independent.** Strategy 1 (`activeFilter`) has always fetched all Active rows regardless of Filter 4. The 654 Active mis-assignments would exist without Phase 1.
+
+##### Summary
+
+- **Full scope: 654 Active listings + ~6,000 historical rows across 21 phantom buildings, mis-assigned on the DB.**
+- **~9-10 phantom/correct duplicate pairs identified** — same address, two buildings, one accumulating contamination.
+- **Real buildings deflated:** Bliss Condos, No55 Mercer, Sugar Wharf West, and others show wrong (missing) inventory because their listings got hijacked.
+- **Phase 1 amplifies historical contamination** but does not create it. The Active-side contamination existed before Phase 1.
+- **Orphan hijacks (55 Nugget, 55 Ridgecrest, etc.) can never be re-claimed** — no correct building to receive them.
+
+##### Fix candidates for future scoping (do NOT implement — flagged for design)
+
+1. **Sync's street-name filter**: skip single-letter first words; use SECOND word if first is a directional (E/W/N/S/A/B/C/O); or fall back to full-street `contains(StreetName, '<full street_name>')` when the first word is ≤ 1-2 chars.
+2. **Post-fetch strict address validation**: require `unparsedAddress.toLowerCase().includes(<full street_name lowercase>)` — would drop 55 Nugget/Cooper/Mercer from a 55-E-Liberty query because "nugget"/"cooper"/"mercer" don't match "e liberty" or "east liberty".
+3. **Phantom/correct reconciliation**: merge each phantom into its correct sibling by moving tagged rows via a controlled re-assignment script. For orphan hijacks (no correct building), create the correct building or NULL the `building_id`.
+4. **Prevent future phantom creation**: guard the building-creation code against `street_name` = single-letter-first-word (should be expanded to full directional).
+
+##### Claimed, unverified
+
+- The "twin" pattern for 22-slot buildings (like `fontana-condos-99-s-town-centre-boulevard-markham` with a `-south-` sibling that has 0 Active): the S-prefix building has 6 genuine Active, so this may not be a phantom — could be a legitimate directional shorthand that PropTx returns matching. Needs per-key inspection.
+- Whether the OTHER phantoms (75, 135, 150, 49 E Liberty; 7, 20, 30 N Park) exhibit the same real-building-deflation dynamic Bliss did. Not measured individually — inferred from the pattern.
+- The exact final counts at end of nightly (probes ran mid-nightly with active oscillation). A fresh probe post-nightly-completion (~2026-07-11 08:00+ UTC) would give a stable snapshot.
+
+**STOP.** Zero writes.
+
+#### PHANTOM ORIGIN + FIX-SAFETY RECON (2026-07-10)
+
+Read-only. Zero writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_PHANTOM-ORIGIN_20260710_161500`. Traces how the phantom buildings were created, why the `.split(' ')[0]` filter exists, what breaks with each fix candidate, and what fraction of the 654 mis-assigned rows are safely re-assignable vs orphaned. No fix implemented.
+
+##### 1 — Phantom origin (how were they created)
+
+**The sync does NOT create buildings.** `scripts/sync-buildings-incremental.ts:8` header comment: "never creates/deletes buildings". Only the sync loops existing building rows and syncs listings against them.
+
+Building creation goes through `app/api/admin/buildings/save/route.ts` → `lib/building-sync/save.ts:257 insertBuilding()`. Both take `buildingData.streetName` from POST body (admin UI input). Building CREATE is triggered by an admin user typing `street_name` into a form (via `admin/buildings/search` → confirm → `admin/buildings/save`).
+
+**Timestamp evidence — the 8 confirmed phantom/correct pairs (SELECT this session):**
+
+| Phantom slug | phantom created | phantom street_name | Correct sibling | correct created | correct street_name |
+|---|---|---|---|---|---|
+| 55-e-liberty-street-toronto-c01 | **2026-02-28** | `E Liberty Street` | bliss-condos-55-east-liberty-street-toronto | 2026-01-29 | `East Liberty Street` |
+| 75-e-liberty-street-toronto-c01 | **2026-02-28** | `E Liberty Street` | liberty-lakeview-towers-75-east-liberty-street-toronto | 2026-01-29 | `East Liberty Street` |
+| 150-e-liberty-street-toronto-c01 | **2026-02-28** | `E Liberty Street` | liberty-place-condos-150-east-liberty-street-toronto | 2026-02-01 | `East Liberty Street` |
+| 49-e-liberty-street-toronto-c01 | **2026-02-28** | `E Liberty Street` | liberty-central-by-the-lake-49-east-liberty-street-toronto | 2026-02-01 | `East Liberty Street` |
+| liberty-market-tower-135-e-liberty-street-toronto-c01 | 2026-02-28 | `E Liberty Street` | liberty-market-tower-135-liberty-street-toronto-c01 | 2026-02-28 | `Liberty Street` |
+| 20-n-park-road-vaughan | 2026-02-28 | `N Park Road` | centre-park-condos-20-north-park-road-vaughan | 2026-02-28 | `North Park Road` |
+| 30-n-park-road-vaughan | 2026-02-28 | `N Park Road` | centre-park-condos-30-north-park-road-vaughan | 2026-02-28 | `North Park Road` |
+| fontana-condos-99-s-town-centre-boulevard-markham | 2026-02-28 | `S Town Centre Boulevard` | fontana-condos-99-south-town-centre-boulevard-markham | 2026-02-28 | `South Town Centre Boulevard` |
+
+**All 8 phantoms created on `2026-02-28`** — same day, batch admin operation. Correct siblings created earlier (2026-01-29 or 2026-02-01) via a different admin flow OR same-day but with spelled-out directional.
+
+**Origin verdict:** an admin batch operation on 2026-02-28 created these 8+ buildings with abbreviated directional `street_name` (`E`/`N`/`S`). This was likely a bulk import (possibly from a source that used PropTx's `StreetName` field verbatim OR a spreadsheet with abbreviated directionals). The batch didn't check for existing duplicate buildings at the same street_number + address, so it created phantoms alongside pre-existing correct records. The sync's `.split(' ')[0]` first-word filter then made the phantoms silently hijack cross-street listings. Not a sync-code bug — a data-entry / admin-tooling / dedup-check bug at building creation.
+
+**Claimed, unverified — needs specific verification**: whether the admin action that created the 2026-02-28 batch used the admin UI's search-then-save flow, or a scripted bulk-insert (would explain no dedup check). Not traceable from git or DB alone.
+
+##### 2 — Directional abbreviation scope (DB-wide)
+
+DB counts this session (`SELECT split_part(street_name, ' ', 1)`):
+
+| First word | Count | Notes |
+|---|---:|---|
+| 'North' | 30 (23 title + 7 upper) | spelled-out N |
+| 'South' | 22 (20+2) | spelled-out S |
+| 'East' | 24 (17+7) | spelled-out E |
+| 'West' | 11 (8+3) | spelled-out W |
+| **`E`** (single-letter abbreviation) | **~7-9** | ~5 on E Liberty + 1 on Vaughan (7-Rowntree?), Markham |
+| **`N`** (single-letter abbreviation) | **~5** | mostly Vaughan N Park |
+| **`S`** (single-letter abbreviation) | **~1-2** | Fontana Markham |
+| **`W`** (single-letter abbreviation) | **~1** | Florida address |
+| **`O`** (single-letter, O'Neill etc.) | **~3** | Toronto C13 |
+| **`A`,`B`,`C`** (non-directional single-letter) | ~4 | mostly out-of-area |
+
+**Total 21 buildings with single-letter first word.** Ratio: ~19% of directional-prefixed buildings use abbreviated form; ~81% use spelled-out. Abbreviated is minority but real.
+
+**Same-street-different-spelling contamination is much wider** — SELECT this session, `GROUP BY street_number, city_district HAVING COUNT(DISTINCT street_name) >= 2` returns 20+ groups with same address but different street_name spellings. Examples:
+- Street 50 in Toronto C13: `["Graydon Hall Drive","O 'Neill Road W","O Neil Road","O Neill Road N","O'neil Road","O'Neill Road","O\"neill Road","Oneill Road"]` — 8 variants for O'Neill Road alone.
+- Street 55 in Toronto C08: `["Bloor Street E","Charles Street","copper Street","Front Street E","Isabella Street","Lombard Street","Merchant's wharf N/A","Merchants Wharf N/A","Merchants' Wharf N/A","Ontario Street","Regent Park Boulevard","Wellesley Street E"]` — 12 variants; 3 are Merchants Wharf spelling variants.
+- Street 55 in Toronto C01: 10 variants including `["E Liberty Street","East Liberty Street"]` — the exact phantom pair.
+
+**Broader diagnosis:** the 21 single-letter-first-word buildings are the sharpest tip of a **data-entry-variance iceberg**. Case variance, punctuation, missing spaces, and abbreviations plague building `street_name` across the DB. The 21 phantoms are the most damaging because loose match on their single letter matches many streets.
+
+##### 3 — Filter's design intent (why `.split(' ')[0]`)
+
+Git blame + history:
+- **Commit `2fa13d9` (2026-01-16)**: `fix: Add city filter to PropTx API queries to prevent cross-city listing pollution`. Body: "Cleaned 2,107 wrongly associated listings in database (set building_id = NULL). Root cause: PropTx queries only filtered by StreetNumber, returning listings from all cities". Same class of contamination bug as the current phantom issue — solved 6 months ago by adding first-word `contains(City, ...)` filter.
+- **Commit `2096bcf` (2026-01-16)**: `fix: Complete PropTx API filter with StreetNumber + StreetName + City`. Body: "All sync/search routes now use the correct 3-part filter matching fetch-proptx.ts pattern: `StreetNumber eq ''` + `contains(StreetName,'')` + `contains(City,'')`. This prevents cross-city and cross-street pollution when syncing buildings."
+
+**Intent statement (from those commit messages):** the 3-part filter (`StreetNumber eq` + `contains(StreetName,firstWord)` + `contains(City,firstWord)`) was DESIGNED to prevent cross-address pollution. It works for most buildings where the first word of `street_name` is a distinctive street identifier (`Yonge`, `Liberty`, `Bayview`, `Bloor`, etc.).
+
+**Why `.split(' ')[0]` (loose fuzzy match) instead of full street_name?** Because PropTx has spelling variance:
+- "Liberty Street" vs "Liberty St" vs "Liberty Ave" — same street, PropTx normalizes inconsistently
+- "Merchants Wharf" vs "Merchant's Wharf" vs "Merchants Wharf N/A" — same wharf, different apostrophes
+- Case variance: "COOPER" vs "Cooper" vs "cooper"
+
+A strict `contains(StreetName, 'Liberty Street')` would MISS listings where PropTx has `StreetName='Liberty St'`. First-word `contains(StreetName, 'Liberty')` catches all variants of the same real street. **This is the intended benefit of the loose match.** A fix must preserve this.
+
+**What breaks with strict full-street_name?** Simulation this session on 55-East-Liberty:
+- Strict `StreetName eq 'East Liberty'`: 9 rows returned by PropTx.
+- Strict `StreetName eq 'E Liberty'`: 0 rows.
+- Strict `StreetName eq 'Liberty'`: 0 rows.
+Full-strict match only works if the sync's building.street_name uses PropTx's exact canonical form. Since DB has multiple spellings for the same real street, strict match would miss listings whose PropTx StreetName doesn't match the DB spelling exactly.
+
+##### 4 — Safe-fix candidates: simulation + what breaks
+
+Simulated four fix approaches this session against 55-E-Liberty:
+
+| Fix | Filter used | Rows returned | Notes |
+|---|---|---:|---|
+| **(A) CURRENT** | `contains(StreetName, 'e')` (first-word single letter) | **267** | Overwhelmed by contamination (9 genuine + 258 unrelated) |
+| **(B) Use SECOND word** if first is 1 char: `contains(StreetName, 'liberty')` | **9** | Clean — exact match to genuine count |
+| **(C) Full street-substring** `contains(StreetName, 'east liberty') OR 'e liberty'` | **9** | Also clean; requires knowing directional expansion table |
+| **(D) Loose match + post-filter** `unparsedAddress.toLowerCase().includes('liberty')` (client-side) | **9** | Also clean; keeps PropTx query broad but filters junk client-side |
+
+**All three fix candidates (B, C, D) produce the SAME correct result (9 rows).**
+
+**What each fix could break:**
+
+- **(B) Use SECOND word if first is 1 char.**
+  - Preserves fuzzy match for real streets (Yonge, Liberty, Bloor still work).
+  - Handles the 21 single-letter first-word phantoms cleanly.
+  - **Risk:** if a legitimate street has a one-char first word AND the second word is nondistinctive. Would need to check the 21 to confirm second-word is meaningfully distinctive for each.
+  - **Verified this session:** for the 5 E Liberty buildings, second word is `Liberty` (distinctive). For the 4 N Park buildings, second word is `Park` — less distinctive, would match many `Park Street`, `Park Drive`, `Park Avenue` in Vaughan. Would need STRICTER address post-filter to fully avoid contamination.
+
+- **(C) Directional expansion (E → East).**
+  - Handles E/W/N/S abbreviations directly.
+  - **Risk:** requires maintaining a hardcoded directional map (`E`, `W`, `N`, `S`, `NE`, `NW`, `SE`, `SW`). Miss cases like `A West Street N` (double directional) or non-directional single-letter (`B Farley Road`, `C Line`).
+
+- **(D) Post-fetch strict `unparsedAddress` inclusion.**
+  - Universal — works regardless of first-word length.
+  - Requires client-side filtering after fetch (small perf hit).
+  - **Risk:** `unparsedAddress` field must contain the expected substring. Verified this session — PropTx populates it consistently (`55 East Liberty Street 909, Toronto, ON M6K 3R2` format). Very low false-negative risk.
+
+- **Reject phantom creation upstream** (recommended in tandem):
+  - Add validation to `admin/buildings/save` to reject `street_name` starting with a single letter (auto-expand E→East, N→North, etc., or block until manually corrected).
+  - Prevents future phantoms. Does not fix historical 21.
+
+- **Phantom-merge** (Rule Zero #1 correction):
+  - Take each phantom's rows and re-assign `building_id` to the correct sibling.
+  - Data write — needs approval + apply-runner pattern.
+
+**No fix candidate LEGITIMATELY relies on the loose single-letter first-word match to work.** The 21 phantoms are all artifacts of the batch admin creation of duplicate buildings. Fix (D) is the safest — it's a purely additive post-filter, doesn't change the PropTx query, and works for all 21 phantoms uniformly.
+
+##### 5 — Reconciliation recoverability (how many of 654 are re-assignable)
+
+SELECT this session, walked each of the 718 Active rows tagged to the 21 phantoms. For each, extracted the address from `unparsed_address`, then searched for a real building with matching `street_number` + `street_name` substring match on the actual address street name. Rough heuristic; false positives possible.
+
+| Category | Count | % of contam |
+|---|---:|---:|
+| Genuine (already at correct building, no move needed) | **64** | — |
+| **Recoverable** (real building candidate exists in DB) | **343** | **52%** |
+| **Orphan** (no candidate building in DB) | **311** | **48%** |
+
+Recoverable examples (real building found for hijacked listing):
+- `C11954147` at 55 Delisle Avenue → `the-carlyle-condos-55-delisle-avenue-toronto-c02`
+- `C13439456` at 55 Charles Street E → `55-charles-street-e-toronto-c01`
+- `C13508628` at 135 Lower Sherbourne St → `time-space-135-lower-sherbourne-street-s-toronto-c08`
+- `C13251968` at 135 Lower Sherbourne St → same
+
+Orphan examples (no correct building in DB):
+- `E13499592, E13503902` at 55 Nugget Avenue — no 55-Nugget building anywhere in DB
+- `C13203520` at 55 Adelaide Street E — no 55-Adelaide-Street-E building
+- `W12716490, W12716486` at 135 Queens Plate Drive — no 135-Queens-Plate-Drive building
+
+**Recovery paths:**
+- **Recoverable (343)**: safe re-assignment via `UPDATE mls_listings SET building_id = <correct_id> WHERE listing_key = ...`. Requires per-key verification against `unparsed_address` (protect against false-positive heuristic matches).
+- **Orphan (311)**: two options — (a) create a real building record from the address details and re-tag, or (b) set `building_id = NULL` (same pattern the prior `2fa13d9` fix used: "Cleaned 2,107 wrongly associated listings in database (set building_id = NULL)"). NULL is safer if the orphan address isn't a known building we want to display.
+
+**Historical non-Active rows (~6,544 tagged to the 21 phantoms) would need the same treatment** — likely largely orphan (many old MLS listings at addresses without a corresponding DB building).
+
+**Claimed, unverified — needs specific verification**: the 343 recoverable count uses a rough substring match. A stricter per-key check (unparsedAddress fully contains candidate's street_name) may reduce this by 10-20% (false positives from partial-word matches like "De Boers" incorrectly matched via "Boulevard" containing "De"). Actual recoverable is likely 275-343 with upper-bound false-positive filtering.
+
+##### Summary
+
+- **Phantoms were CREATED by an admin batch operation on 2026-02-28.** Not a sync-code creation. Sync just amplified the damage via first-word loose match.
+- **The `.split(' ')[0]` filter has explicit design intent** (per `2fa13d9`/`2096bcf` commit messages): accommodate PropTx spelling variance while filtering by address. Works for 99%+ of buildings; fails specifically for 21 with single-letter first words.
+- **Safe fix path**: fix D (post-fetch strict `unparsedAddress` inclusion) — universal, additive, no PropTx query change, works for all 21 phantoms. Fix B (second-word if first is 1-char) also viable but has edge cases (N Park's "Park" is not distinctive enough).
+- **Reconciliation recoverability**: ~52% of 654 contaminated rows can be safely re-assigned (real building candidate exists); ~48% are orphans (no correct building, need either creation or NULL).
+- **Broader data-quality concern**: 20+ groups with same address / multiple `street_name` variants across the DB. The 21 single-letter phantoms are the sharpest tip — data-entry variance is much wider.
+
+##### Fix roadmap for future scoping (do NOT implement)
+
+- **Phase 3a (sync-code)**: add post-fetch strict `unparsedAddress` inclusion in `fetchPropTxListingsForBuilding` (line ~745). ~10-line addition. Zero risk to correct buildings; kills the 21 phantoms' contamination on next nightly.
+- **Phase 3b (admin-tooling)**: add creation-time validation to `admin/buildings/save` rejecting single-letter first-word `street_name` (auto-expand E/N/S/W to full form, block others until manually corrected). Prevents future phantoms.
+- **Phase 3c (backfill)**: reconcile the 654 contaminated rows — for recoverables re-assign to correct building; for orphans set `building_id = NULL` (same pattern as the 2026-01-16 fix). Gated data write with apply-runner pattern + rollback snapshot.
+- **Phase 3d (data-quality sweep)**: broader same-address-different-spelling deduplication (20+ groups identified). Larger scope; needs separate dispatch.
+
+**None of these are Phase 1 or Phase 2 scope.** Phase 1 (shipped) and Phase 2 (planned) both concern listing-status transitions, orthogonal to building-match accuracy.
+
+**STOP.** Zero writes.
+
+#### COMPLETE SINGLE-LETTER + MATCH-FIELD EXPOSURE RECON (2026-07-10)
+
+Read-only. Zero writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_COMPLETE-EXPOSURE_20260710_170000`. Maps every field the sync's building→PropTx match touches, the complete single-letter inventory across BOTH `street_name` AND `building_name`, and requirements a both-conditions fix must satisfy (miss no real listings + admit no contamination).
+
+##### PART A.1 — every field the sync's PropTx match uses
+
+Grep-verified from `scripts/sync-buildings-incremental.ts` this session.
+
+**Building fields fed INTO the PropTx query (line 705-707):**
+- `building.street_number` → `StreetNumber eq '${streetNumber}'` (Filter 1, strict)
+- `building.street_name` → `.split(' ')[0]` → `contains(StreetName, ...)` (Filter 2, loose)
+- `building.city_district` → `.split(' ')[0]` → `contains(City, ...)` (Filter 3, loose)
+
+**Fields fed into POST-fetch client-side filters (line 750-763):**
+- Post-Filter 1 (line 754): `l.StreetNumber === streetNumber` (strict repeat of server-side)
+- Post-Filter 2 (line 755-758): `unparsedAddress.includes(sw) OR StreetName.includes(sw)` where sw = first-word of `building.street_name` lowercased
+- Post-Filter 3 (line 759-763): `unparsedAddress.includes(cw) OR City.includes(cw)` where cw = first-word of `building.city_district` lowercased
+
+**PropTx listing fields USED:**
+- Server-side: `StreetNumber`, `StreetName`, `City`
+- Client-side: `StreetNumber`, `StreetName`, `City`, `UnparsedAddress`
+
+**Fields NOT used in the match at all** (verified this session via targeted grep):
+- **`building.building_name`** — appears ONLY in log messages (`Building active: ${building.building_name}` at line 727, error message at line 995). NOT in any filter.
+- `building.canonical_address` — not referenced in match.
+- `building.slug` — not referenced in match.
+
+**Definitive answer to operator's question**: **building NAME does NOT feed the sync match.** The single-letter concern for names like "E Condos", "X Condos", "M City" is irrelevant to the phantom bug — those buildings are safe UNLESS their `street_name` is also thin.
+
+##### PART A.2 — post-fetch validation reference field
+
+Query this session showed the phantom's `canonical_address` is derived from the broken `street_name`:
+
+| Building | street_name | canonical_address |
+|---|---|---|
+| 55-e-liberty-street-toronto-c01 (phantom) | `E Liberty Street` | `55 E Liberty Street, Toronto C01` |
+| bliss-condos-55-east-liberty-street-toronto (correct) | `East Liberty Street` | `55 East Liberty Street, Toronto C01` |
+| 20-n-park-road-vaughan (phantom) | `N Park Road` | `20 N Park Road, Vaughan` |
+
+`canonical_address` = `street_number + ' ' + street_name + ', ' + city_district` (heuristically). **It's redundant with the broken street_name, not an independent clean reference.**
+
+**No clean per-building reference field exists to derive the correct street from.** The phantom's slug contains "east-liberty" (URL-generation had a heuristic that expanded it), but slug conventions are inconsistent (`liberty-market-tower-135-e-liberty-street-toronto-c01` and `liberty-market-tower-135-liberty-street-toronto-c01` both exist).
+
+**For a post-fetch fix, the reference must come from the LISTING side** (PropTx's canonical `StreetName` / `UnparsedAddress`) — normalized and matched against the building's expected address.
+
+##### PART B.3 — 21 street_name single-letter buildings (reconfirmed)
+
+Full list with current Active counts (mid-nightly; counts shift by ~20% during nightly).
+
+| Active | first | street_name | building_name | slug |
+|---:|:---:|---|---|---|
+| 313 | E | E Liberty Street | 55 E Liberty | 55-e-liberty-street-toronto-c01 |
+| 131 | O | O 'Neill Road W | Rodeo drive condo | rodeo-drive-condo-50-o-neill-road-w-toronto-c13 |
+| 99 | E | E Liberty Street | 75 E Liberty | 75-e-liberty-street-toronto-c01 |
+| 44 | E | E Liberty Street | Liberty Market Tower | liberty-market-tower-135-e-liberty-street-toronto-c01 |
+| 40 | E | E Liberty Street | 150 E Liberty | 150-e-liberty-street-toronto-c01 |
+| 29 | E | E Liberty Street | 49 E Liberty | 49-e-liberty-street-toronto-c01 |
+| 14 | N | N PARK Road | 7 N PARK | 7-n-park-road-vaughan |
+| 11 | N | N Service Rd Road N | Como Condos | como-condos-600-n-service-rd-road-n-road-n-hamilton |
+| 11 | N | N Park Road | 20 N Park | 20-n-park-road-vaughan |
+| 8 | N | N Park Road | 30 N Park | 30-n-park-road-vaughan |
+| 6 | S | S Town Centre Boulevard | Fontana Condos | fontana-condos-99-s-town-centre-boulevard-markham |
+| 5 | A | A West Street N | BALSAM LAKE CLUB | balsam-lake-club-...-19-a-west-street-n-kawartha-lakes |
+| 5 | O | O Neil Road | 50 O Neil | 50-o-neil-road-toronto-c13 |
+| 1 | B | B Valdez N/A | 4392 B Valdez | 4392-b-valdez-n-a-out-of-area |
+| 1 | N | N Muldrew Lake Road | 1217 N Muldrew Lake | 1217-n-muldrew-lake-road-out-of-area |
+| 0 | O | O Neill Road N | Rodeo Condos | rodeo-condos-50-o-neill-road-n-road-n-toronto-c13 |
+| 0 | C | C Line N/A | Arbours of Montgomery | arbours-of-montgomery-60-c-line-n-a-n-a-orangeville |
+| 0 | A | A Fleet Street | West Harbour City Condos | west-harbour-city-condos-618-a-fleet-street-toronto-c01 |
+| 0 | W | W Oakland Park Boulevard | Hawaiian Gardens | hawaiian-gardens-5071-w-oakland-park-boulevard-florida-usa |
+| 0 | B | B Farley Road | 99 B Farley | 99-b-farley-road-centre-wellington |
+| 0 | - | - 86 Dundas Street E | 1106 - 86 Dundas | 1106---86-dundas-street-e-mississauga (freak — starts with "-") |
+
+**718 Active tagged; 91% contamination (654 of 718).**
+
+##### PART B.4 — single-letter / very-short building NAMES
+
+**Not the concern the operator worried about** (name doesn't feed the match). But sample findings:
+
+**Buildings whose NAME first word is 2 chars** (top 30, verified this session) — most have FINE street_name:
+
+| NAME | street_name | streetLen | Active | phantom risk? |
+|---|---|:---:|---:|:---:|
+| 55 E Liberty | **E Liberty Street** | 1 | 313 | ⚠ YES (already in 21) |
+| 75 E Liberty | **E Liberty Street** | 1 | 99 | ⚠ YES |
+| UC Tower 2 | Simcoe Street | 6 | 36 | ok |
+| YC Condos | Grenville | 9 | 33 | ok |
+| 11 Yorkville Condos | Yorkville Avenue | 9 | 31 | ok |
+| UC Tower | Simcoe Street N | 6 | 30 | ok |
+| 49 E Liberty | **E Liberty Street** | 1 | 29 | ⚠ YES |
+| CG Tower | Highway 7 Road | 7 | 29 | ok |
+| 77 Shuter | Shuter Street | 6 | 23 | ok |
+| 88 Queen | Queen Street E | 5 | 22 | ok |
+| QA Condos | Eastern Avenue | 7 | 21 | ok |
+| Me 2 | Meadowglen Place | 10 | 16 | ok |
+| S2 Condos | Southdown Road | 9 | 16 | ok |
+| X2 Condos | Charles st e | 7 | 15 | ok (Charles is distinctive) |
+| PJ Condo | John Street | 4 | 13 | ok |
+| E2 Condos | roehampton Avenue | 10 | 12 | ok |
+| 20 N Park | **N Park Road** | 1 | 11 | ⚠ YES |
+| XO Condo | Dufferin Street W | 8 | 11 | ok |
+
+**Overlap with 21**: 4 buildings (55/75/49 E Liberty + 20 N Park). No new at-risk buildings via NAME alone. **Building name concern is fully absorbed by street_name concern.**
+
+##### PART B.5 — genuinely short REAL streets (legit ambiguity)
+
+Buildings with 2-3 char first-word `street_name` (real streets that ARE inherently short):
+
+| Active | street_name | first | Ambiguity |
+|---:|---|:---:|---|
+| 18 | Sea Ray Avenue | 'Sea' (3) | 'sea' matches Season, Sears, Seasons |
+| 18 | Inn On The Park Drive | 'Inn' (3) | narrow |
+| 18 | Ed Clark Gardens | 'Ed' (2) | 'ed' matches Edgewood, Eddy, Eden |
+| 18 | Elm Drive W | 'Elm' (3) | narrow |
+| 15 | St Joseph | 'St' (2) | **'st' matches nearly every street with 'st'** (hundreds) |
+| 15 | Oak Street | 'Oak' (3) | 'oak' matches Oakwood, Oakhurst |
+| 15 | The Queensway Way | 'The' (3) | **'the' extremely common** |
+| 14 | The Donway West N/A | 'The' (3) | same |
+| 14 | Bay | 'Bay' (3) | **'bay' matches Bayview, Bayside, Bay Mills** |
+| 46 Active total | **Bay** (one-word street_name) | | matches many |
+| 58 Active total | Grenville | (9) | distinctive |
+| 53 Active total | Wellesley | (9) | distinctive |
+
+**Legitimate short streets that exist AND are ambiguous**: `Bay`, `Oak`, `Elm`, `St Joseph`, `The Queensway`, `Sea Ray`, `Ed Clark`. These are REAL streets. Current sync's loose match on their first-word contaminates them too, though less severely than 1-char cases. Not covered by "single-letter" scope but same class of bug.
+
+##### PART C.6 — both-conditions fix requirements (hard-case sample)
+
+Tested three matching strategies against 55-East-Liberty (phantom), 770 Bay (short real), and 50 O'Neill (spelling variance):
+
+| Strategy | 55-E-Liberty | 770 Bay | 50 O'Neill | 20 N Park |
+|---|---:|---:|---:|---:|
+| **CURRENT loose `contains(StreetName, firstWord)`** | 267 (9 real + 258 contam) | 14 | 172 (18 real + 154 contam) | 5 |
+| Strict `unparsedAddress.startsWith('<num> <street>')` | 9 ✓ | 13 ✓ (misses 1 case-variant) | 0 (misses; DB has 8 spelling variants, PropTx has 4) | 0 |
+| Normalize + directional-expand (strip apostrophes/case; E→East, N→North; strip suffix) | **9 ✓** | **13 ✓** | 0 (JS uppercase-variant bug + spelling variance) | 0 (DB street_name is abbreviated "N Park" but PropTx returns "N Park Road"; normalize doesn't fully bridge) |
+
+**Findings for the both-conditions fix:**
+
+- **MISS NOTHING**: strategies must handle PropTx's spelling variance for the same real street. Verified this session on 50-O'Neill: PropTx returns 4 variants (`O'neill`, `O'Neill`, `O'Neill Rd`, `Oneil`). Strategy must normalize both PropTx `StreetName` AND `unparsedAddress` (strip apostrophes, standardize case, strip suffixes like Rd/Road/Street/St) before comparison.
+- **ADMIT NO CONTAMINATION**: strategies must discriminate cross-address hits. Verified this session on 55 East Liberty: normalize+directional-expand correctly returns 9 (matches genuine) from a loose match of 267 (mostly contamination).
+- **Single strategy that works for ALL cases**: normalize + directional-expand comes closest but needs additional handling for:
+  - **Spelling variance in DB's own `street_name`** (e.g., `50-o-neil-road-toronto-c13` and `rodeo-drive-condo-50-o-neill-road-w-toronto-c13` both exist — the DB itself has 8 spellings of O'Neill Road at address 50). Post-filter can't disambiguate WHICH of the 8 DB rows is "correct" for a given PropTx listing.
+  - **Legit short-first-word streets** (Bay, Oak, St Joseph) — post-filter with normalize+expand works when street_name is at least 3 chars, distinctive.
+  - **Truly-thin single-letter (phantoms)** — post-filter works after directional expansion.
+
+**Different building types genuinely need different handling:**
+- **Phantoms (21 identified)**: reconcile to their correct sibling (data-side fix) OR add sync-side post-filter that expands directional prefix. Either works for phantom sync-match.
+- **Real short-street buildings** (Bay/Oak/etc): sync-side post-filter with normalize+expand. Whitelist not needed if post-filter is strict enough.
+- **Same-address multi-spelling groups** (50 O'Neill's 8 DB variants): need DB deduplication (merge duplicates). Sync-side fix can't disambiguate multiple correct-target candidates.
+
+##### PART C.7 — most reliable per-listing signal
+
+Ranked from most reliable → least, based on this session's probes:
+
+1. **`unparsedAddress` starts-with `<street_number> <expected street_prefix>`** — highest reliability. UnparsedAddress is PropTx's canonical formatted address string. Every listing has one. Format is consistent: `<num> <street-with-suffix> [<unit>], <city>, <province> <postal>`. Deterministic prefix match works when both sides are normalized (case-insensitive, apostrophe-stripped, expected street_prefix generated via directional-expansion from building's street_name minus suffix).
+2. **Composite** `StreetNumber === b.street_number` AND `normalize(StreetName) === normalize(expandDirectional(b.street_name))` — very reliable for phantoms and short real streets. Fails on DB same-address spelling variants.
+3. **Postal-code match** (from `PostalCode` field) — theoretically strong (postal identifies a small physical area), but requires building to have a canonical postal code and PropTx listings to consistently populate it. Not yet verified; potential additional signal.
+4. **`City` first-word match** (already in current filter) — necessary but not sufficient; useful as a coarse pre-filter.
+5. **`StreetName` first-word `contains` match** (current filter) — necessary for broad catch, insufficient for discrimination.
+
+**Recommended composite** (do NOT implement — for design):
+```
+match(row, building) =
+  normalize(row.StreetNumber) === normalize(building.street_number)
+  AND (
+    // Primary: canonical unparsedAddress prefix match
+    normalize(row.UnparsedAddress).startsWith(normalize(building.street_number) + ' ' + expandDirectional(stripSuffix(building.street_name)))
+    OR
+    // Secondary: canonical StreetName match (fallback if UnparsedAddress is unusual)
+    normalize(expandDirectional(stripSuffix(row.StreetName))) === normalize(expandDirectional(stripSuffix(building.street_name)))
+  )
+```
+
+**Confidence assessment**:
+- **HIGH**: works for E Liberty (5), Bay Street, and any building whose `street_name` has a distinctive normalized form.
+- **MEDIUM**: works for N Park (needs `stripSuffix` handling — DB has `N Park Road`, PropTx returns matching after normalize).
+- **LOW**: cannot resolve DB same-address multi-spelling cases (50 O'Neill's 8 DB rows). Those need DB-side dedup.
+
+##### Cross-cutting conclusions
+
+1. **The bug is in TWO layers**:
+   - **Sync-code layer** (`.split(' ')[0]`): loose matching causes over-inclusion. Fix: normalize + directional-expand + post-filter. Zero data-write risk.
+   - **DB-data layer** (phantoms + spelling variants): 8+ same-address duplicate building rows, 21+ single-letter first-word rows, 20+ multi-spelling groups. Fix: dedup + reconcile. Data-write, gated.
+2. **Both layers must be fixed together for zero-contamination**. Sync-code fix alone doesn't remove existing mis-assigned rows. DB-dedup alone doesn't prevent recurrence.
+3. **Building NAME is a red herring** for the match bug — confirmed unused in the filter. Names like "E Condos" / "X Condos" are safe when their street_name is normal.
+4. **Composite signal (StreetNumber + normalized StreetName + UnparsedAddress prefix)** is the most reliable per-listing discriminator. Directional-expansion + suffix-stripping + apostrophe-normalization handle 90%+ of cases cleanly. Same-address multi-spelling requires DB dedup.
+
+##### Claimed, unverified
+
+- Full test of the composite match strategy against all 21 phantoms + all ~40 short-real-street buildings this session. Only 5 sample buildings tested end-to-end.
+- Postal-code strength as an additional signal — not measured this dispatch.
+- Whether the JS `contains(StreetName, upperCaseFirstWord)` case produces different results than title-case (my probe code had 2-variant vs 3-variant asymmetry masked O'Neill/N Park cases). Marginal; not affecting main conclusion.
+
+**STOP.** Zero writes.
+
+#### FULL-SCOPE CONTAMINATION SWEEP + EXISTING-NORMALIZER CHECK (2026-07-10)
+
+Read-only. Only tracker written. Zero DB/code writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_FULL-SCOPE-SWEEP_20260710_180000`.
+
+**Purpose:** measure the complete building-match contamination-class exposure (not just the 21 already sampled), find any existing address-normalization code from prior work, quantify the recoverability split, and document all findings so the context survives across future sessions.
+
+##### PART 1 — Existing address normalization code (find, don't rebuild)
+
+Grep sweep this session across `lib/`, `scripts/`, `app/`, looking for directional expansion (EAST↔E), suffix stripping (Street/St), variation generators, "Core Address Matching" references.
+
+**Found:**
+
+- **`lib/estimator/home-comparable-matcher-sales.ts:224 normalizePlaceName(raw)`** — the only address-adjacent normalizer in the codebase. Does: lowercase, trim, strip a specific set of unit suffixes (`Main`, `BSMT`, `Upper`, `Lower`, `Rear`, `Apt`, `Unit`). **Does NOT do directional expansion (E→East). Does NOT strip street-type suffixes (Street/St/Ave/Road). Estimator-scoped, not used by the sync.**
+- `extractStreetName(address)` (line 232) and `extractStreetNumber(address)` (line 245) at the same file: parse `unparsed_address` to extract components. Simple substring/split. Not a normalizer, just an extractor.
+
+**Not found (searched for):**
+- Directional expansion function (`EAST↔E`, `WEST↔W`, `NORTH↔N`, `SOUTH↔S`) — no code exists.
+- Street-suffix stripping (`Street/St/Avenue/Ave/Road/Rd/etc`) — no code exists.
+- Address variation generator — no code exists.
+- The "Core Address Matching" function the operator remembered from ~2025-09 — **not in current codebase.** Either was never merged, was renamed, was removed, or the memory is inaccurate. Git-log searches for related keywords returned nothing beyond the estimator normalizer.
+- Any prior handling of `St Clair` / `St. Clair` spelling variance — only found in `docs/snapshots/semidetached_pre_normalize_20260705_065115.txt` (a snapshot file, not runtime code).
+
+**Precedent commit** (already documented in the "PHANTOM ORIGIN + FIX-SAFETY RECON" section above): commit `2fa13d9` (2026-01-16) — `fix: Add city filter to PropTx API queries to prevent cross-city listing pollution`. Body: "Cleaned 2,107 wrongly associated listings in database (set building_id = NULL)". Same class of bug, resolved by (a) adding the city-first-word `contains(...)` filter to the sync, and (b) NULL-ing the mis-tagged rows as a one-time backfill. **The 2fa13d9 pattern is the precedent for the fix ahead: sync-code fix + one-time NULL of mis-assigned rows.**
+
+**Verdict**: no reusable normalizer exists. A fix will need to write directional-expansion + suffix-stripping code (roughly 20-30 lines). The estimator's `normalizePlaceName` is not a good starting point (different domain, different needs).
+
+##### PART 2 — Comprehensive contamination-class count (all measured this session)
+
+Three overlapping contamination classes computed by `pg` this session (`SET statement_timeout = 0`).
+
+**Category A — SINGLE-LETTER first-word `street_name`** (the 21 already fully characterized):
+- **21 buildings, 718 Active tagged, 654 confirmed contamination (91%).**
+- Full per-building list in the prior BUILDING-MATCH BUG FULL SCOPE section above.
+- Top 6 by Active: 55/75/135/150/49 E Liberty + Rodeo O'Neill.
+- 91% contamination rate = these are essentially all phantom/broken buildings.
+
+**Category B — 2-3 char first-word `street_name`, non-numeric**:
+- **534 buildings, 1,792 total Active tagged.**
+- Distinct first words include (top 20): `St` (81 bldgs), `The` (74), `Bay` (32), `St.` (26), `ST` (25), `FIR` (25), `Old` (22), `Hwy` (17), `Elm` (15), `Don` (12), `Via` (12), `De` (8), `Ann` (8), `Oak` (8), `New` (7), `SUE` (7), `Lee` (6), `Sea` (6), `Erb` (6), `VIA` (6).
+- **Sample-verified contamination rate**: 25 top-Active buildings across distinct first words, per-key checked via `unparsed_address` inclusion. Aggregate: **20.6% contamination** in the sample. But contamination is heavily concentrated:
+  - `'De'` (De Boers Drive): 43 Active, 6 genuine, **37 contam** (86%)
+  - `'Ed'` (Ed Clark Gardens): 18 Active, 0 genuine, **18 contam** (100%)
+  - `'Bay'`, `'Ann'`, `'Cox'`, `'Dan'`, `'Elm'`, `'Erb'`, `'Eva'`, `'Fir'`, `'Hay'`, `'Hwy'`, `'IN'`, `'Inn'`, `'Joe'`, and most others: **0% contamination** — Bay Street 955, Bay Street 33, Ann Street 28, Cox Boulevard 23, Dan Leckie Way 38, Elm Drive 30, Eva Road 10, Joe Shuster Way 38 all show 100% genuine.
+- **Extrapolated real contamination in Category B**: concentrated in ~3-5 problem-first-word buckets ('De', 'Ed', 'St' if 'st' matches 'Street' suffix, 'The' if 'the' matches many addresses). **Estimated contaminated Active from Cat B: ~200-400 rows** (rough, based on sample distribution).
+
+**Category C-refined — TRUE spelling-variant duplicate groups** (same `street_number` + `city_district`, `street_name` normalizes to same form via lowercase + strip apostrophes + expand E/W/N/S + strip street-type suffix):
+- **45 groups, 92 buildings, 770 Active tagged.**
+- Top 8 groups:
+  - 50 Toronto C13, normalize='oneill' — 3 buildings: `Oneill Road`, `O'Neill Road`, `O"neill Road` (Rodeo)
+  - 55 Toronto C08, normalize='merchants wharf n/a' — 3 buildings: `Merchants Wharf N/A`, `Merchants' Wharf N/A`, `Merchant's wharf N/A` (Aqualina)
+  - 99 Markham, normalize='south town centre' — 2: `S Town Centre` vs `South Town Centre` (Fontana)
+  - 150 Toronto C01, normalize='east liberty' — 2: `E Liberty Street` vs `East Liberty Street` (150 phantom + Liberty Place)
+  - 397 Manor Park, normalize='codds' — 2: `Codd's Road` vs `CODDS Road`
+  - 80 Toronto C01, normalize='st patrick' — 2: `St Patrick Street` vs `St. Patrick Street`
+  - 30 Toronto C15, normalize='herons hill' — 2: `Heron's Hill Way` vs `Herons Hill Way`
+  - 1830 Burlington, normalize='walkers line' — 2: `WALKER'S Line` vs `Walkers Line`
+
+**Overlap** (measured this session):
+- A ∩ B = 0 (single-letter vs 2-3-char are mutually exclusive by definition)
+- A ∩ C-refined = 13 (13 of the 21 single-letter phantoms are also in true-duplicate pairs with a spelled-out sibling — makes sense; the phantom + correct pair is a duplicate)
+- B ∩ C-refined = 27 (some 2-3-char buildings are also in duplicate groups)
+
+**Dedup — TRUE TOTAL contamination-class exposure**:
+
+| Metric | HIGH-CONFIDENCE (A ∪ C-refined) | UPPER BOUND (A ∪ B ∪ C-refined) |
+|---|---:|---:|
+| Distinct buildings affected | **104** | 624 |
+| Active listings tagged to affected buildings | **924** | ~2,500 (Cat B tagged total) |
+| Confirmed contamination in those buildings | ~700-800 (91% of 924 for Cat A + 100% for half of C pairs — the phantom side) | ~1,000-1,500 estimated |
+| % of DB Active (96,019 total) | ~0.85% (HIGH-CONFIDENCE) | ~2.6% (UPPER BOUND) |
+
+**Best-estimate TRUE TOTAL**: **~104 distinct buildings, ~800-1,000 contaminated Active listings** (across A and C-refined, high confidence). Category B adds an additional ~30-60 buildings and ~200-400 contaminated rows in the 3-5 problem-first-word buckets.
+
+Historical (non-Active) contamination is roughly **10× the Active count** based on the Category A ratio (~654 Active + 6,544 non-Active = ~10× at phantoms). Extrapolating: **~8,000-10,000 historical (non-Active) rows mis-assigned** across the full contamination-class exposure.
+
+##### PART 3 — Recoverability at full scope
+
+**Sample this session**: n=40 random Active rows from the A ∪ C-refined pool (824 candidate rows). For each, attempted to find a real building in DB with a matching `street_number` + `street_name` substring (with false-positive filtering).
+
+- **Recoverable**: **21 of 40 = 52.5%** — real building found in DB, tag can be moved via `UPDATE mls_listings SET building_id = <correct>`.
+- **Orphan**: **19 of 40 = 47.5%** — no candidate building in DB. Address exists in PropTx but there's no DB building to receive it. Options: create a new building record, OR set `building_id = NULL` (2fa13d9 pattern).
+- **Unclear**: 0 in this sample (all cases resolved clearly one way or the other).
+
+**Extrapolation to full 924 Active in high-confidence pool**:
+- Recoverable: **~485**
+- Orphan: **~440**
+
+Extrapolation to upper-bound (~1,000 contamination including Category B): **~525 recoverable + ~475 orphan**.
+
+Historical rows likely follow similar 52/48 split → **~4,200 recoverable historical rows + ~3,800 orphan historical rows**.
+
+##### Cross-cutting takeaways for the fix design
+
+1. **Two-layer fix required** (already stated in the prior COMPLETE EXPOSURE section):
+   - **Sync-code layer**: add directional-expansion + suffix-stripping normalizer + post-fetch address-inclusion check in `fetchPropTxListingsForBuilding`. **Must be written new** (no reusable normalizer exists). Preserves the by-design first-word `contains(...)` filter's fuzzy-match benefit while killing single-letter and short-first-word contamination.
+   - **DB-data layer**: (a) NULL the ~475 orphan mis-assignments (follow 2fa13d9 precedent). (b) Re-tag the ~485 recoverable rows to their correct building. (c) Deprecate the ~50 phantom duplicate building records or merge their historical (non-Active) rows into the correct sibling. Gated data write; needs apply-runner pattern with rollback snapshot per CLAUDE.md.
+2. **Contamination is a smaller share of the DB than initial numbers suggested** — ~104 high-confidence buildings out of ~9,835, ~900 Active mis-assigned out of ~96,000. But those ~900 rows show wrong addresses on wrong building pages RIGHT NOW; Rule Zero #1 violation.
+3. **Phase 1 (shipped `6c904f0`) is orthogonal.** Phase 1 fixed status-transitions. Building-match accuracy is a separate concern. No conflict between them.
+4. **Phase 2 (aged-out retry-inactivate) is also orthogonal.** Also no conflict.
+5. **Building NAME is NOT part of the match** (grep-verified in the prior COMPLETE EXPOSURE section). Short-name buildings like YC Condos, X2 Condos, M City 1, PJ Condo are safe as long as their `street_name` is normal.
+
+##### Claimed, unverified — needs specific verification
+
+- **Category B contamination extrapolation**: sample rate 20.6% was based on 25 top-Active buildings across distinct first-words. Real total contamination in Cat B depends on the distribution across the 534 buildings and could be 5-30% depending on how many share the problematic first-word buckets. A full per-building probe of all 534 would refine, but is time-intensive.
+- **Historical (non-Active) contamination extrapolation** (~8,000-10,000): based on the Category A ratio applied to the full exposure. Individual buildings vary widely.
+- **Recoverability heuristic**: uses substring matching with false-positive filtering. Actual recoverability may be 5-10% lower once per-key strict address-normalize checks are applied.
+- **Whether a "Core Address Matching" function was ever written and later removed**: git-log searches this session didn't find it. Could exist in a branch, a deleted file, or the operator's memory may be inaccurate.
+- **Whether the ~450 recoverable Category A + C rows would generate any duplicate-key conflicts when re-tagged** (unlikely since listing_key is unique and building_id is not part of the constraint, but should be verified per-batch during a backfill).
+
+##### Fix-roadmap summary (documented so future sessions have context)
+
+**None to implement this dispatch.** All approvals gated. For future planning:
+
+1. **Phase 3a-sync**: write a shared address-normalizer (directional expand + suffix strip + case + apostrophe). Add post-fetch address-inclusion filter in `fetchPropTxListingsForBuilding` (~20-30 lines). Zero data-write risk. Kills all future single-letter and 2-3-char contamination on subsequent nightlies.
+2. **Phase 3b-admin**: add `admin/buildings/save` validation rejecting single-letter first-word `street_name` (auto-expand E/N/S/W to full form). Prevents future phantom creation.
+3. **Phase 3c-backfill**: apply-runner script that (a) re-tags recoverables to correct building via `UPDATE`, (b) NULLs orphans following the 2fa13d9 precedent. Snapshot before + verify after. Gated data write.
+4. **Phase 3d-dedup**: deprecate/merge phantom duplicate building records. Larger scope — needs a design pass to handle historical rows, cross-references, and any downstream deps.
+
+**STOP.** Zero code/DB writes. Tracker updated only.
+
+#### MATCHER DESIGN DATA — raw findings (2026-07-11)
+
+Read-only. Only tracker written. Zero DB/code writes. Backup: `docs/W-MARKETING-TRACKER.md.backup_MATCHER-DESIGN-DATA_20260711_090000`. Reports raw data for three specific gaps before matcher design; no proposal.
+
+##### GAP 1.1 — buildings.street_name first-word distribution
+
+Total buildings in DB: **9,835** (all with `street_name` non-null this session).
+
+**Distribution by first-word character length**:
+
+| length | buildings |
+|---:|---:|
+| 1 | **21** |
+| 2 | 134 |
+| 3 | 430 |
+| 4 | 917 |
+| 5 | 1,461 |
+| 6 | 1,605 |
+| 7 | 1,595 |
+| 8 | 1,751 |
+| 9 | 1,020 |
+| 10 | 612 |
+| 11 | 177 |
+| 12 | 49 |
+| 13 | 53 |
+| 14 | 7 |
+| 15 | 1 |
+| 17 | 1 |
+| 20 | 1 |
+
+**1-char first-word values (all 21 verbatim)**: `'N'` × 5, `'E'` × 5, `'O'` × 3, `'B'` × 2, `'A'` × 2, `'W'` × 1, `'C'` × 1, `'S'` × 1, `'-'` × 1.
+
+**2-char first-word values (134 total, top 15 verbatim)**: `'St'` × 81, `'ST'` × 25, `'De'` × 8, `'Mc'` × 5, `'La'` × 3, `"O'"` × 3, `'Mt'` × 1, `'Ed'` × 1, `'Du'` × 1, `'DU'` × 1, `'IN'` × 1, `'10'` × 1, `'35'` × 1, `'55'` × 1, `'75'` × 1.
+
+**3-char first-word values (430 total, top 20 verbatim)**: `'The'` × 74, `'Bay'` × 32, `'St.'` × 26, `'Ann'` × 8, `'Oak'` × 8, `'New'` × 7, `'SUE'` × 7, `'Erb'` × 6, `'Big'` × 6, `'VIA'` × 6, `'Sea'` × 6, `'Lee'` × 6, `'DES'` × 5, `'ST.'` × 5, `'RED'` × 5, `'9th'` × 5, `'BIG'` × 4, `'2nd'` × 4, `'Sky'` × 4, `'Red'` × 4.
+
+##### GAP 1.2 — directional variant counts
+
+**Directional as FIRST word (case-insensitive)**:
+- `E`: **5**  |  `W`: **1**  |  `N`: **5**  |  `S`: **1** (abbreviated form, total **12**)
+- `East`: **24**  |  `West`: **11**  |  `North`: **30**  |  `South`: **22** (spelled-out, total **87**)
+- Ratio: 12 abbreviated / 87 spelled-out ≈ **12% abbreviated first-position directional**.
+
+**Directional as LAST word (case-insensitive)** — this is the standard Toronto street format ("Bloor Street E"):
+- `E`: **581**  |  `W`: **670**  |  `N`: **213**  |  `S`: **194** (abbreviated, total **1,658**)
+- `East`: 1  |  `West`: 0  |  `North`: 0  |  `South`: 0 (spelled-out, total **1**)
+- **The last-position convention is ~100% abbreviated.** Only 1 building spells it out.
+
+**Compound directionals (NE/NW/SE/SW/Northeast/Northwest/Southeast/Southwest)** as isolated word: **all 0**. Confirmed from data — no compound directionals exist in `buildings.street_name`.
+
+##### GAP 1.3 — raw street_name samples
+
+**All 21 single-letter first-word buildings, verbatim**:
+
+```
+1106 | "- 86 Dundas Street E"       | Mississauga
+618  | "A Fleet Street"              | Toronto C01
+19   | "A West Street N"             | Kawartha Lakes
+99   | "B Farley Road"               | Centre Wellington
+4392 | "B Valdez N/A"                | Out of Area
+60   | "C Line N/A"                  | Orangeville
+135  | "E Liberty Street"            | Toronto C01
+150  | "E Liberty Street"            | Toronto C01
+55   | "E Liberty Street"            | Toronto C01
+49   | "E Liberty Street"            | Toronto C01
+75   | "E Liberty Street"            | Toronto C01
+1217 | "N Muldrew Lake Road"         | Out of Area
+30   | "N Park Road"                 | Vaughan
+20   | "N Park Road"                 | Vaughan
+7    | "N PARK Road"                 | Vaughan
+600  | "N Service Rd Road N"         | Hamilton
+50   | "O 'Neill Road W"             | Toronto C13
+50   | "O Neil Road"                 | Toronto C13
+50   | "O Neill Road N"              | Toronto C13
+99   | "S Town Centre Boulevard"     | Markham
+5071 | "W Oakland Park Boulevard"    | Florida  Usa
+```
+
+**Position of directional in these 21**: always FIRST WORD. Some ALSO have a trailing directional (e.g., "A West Street N", "O 'Neill Road W", "N Service Rd Road N", "O Neill Road N", "- 86 Dundas Street E"). No cases with directional embedded mid-street.
+
+**20 random normal buildings (first-word ≥ 4 chars, ≥ 1 Active listing)**:
+
+```
+5035 | "Harvard Road"                 | Mississauga             | 2 Active
+26   | "Gibbs Road"                   | Toronto W08             | 7 Active
+121  | "Highway #8 Road"              | Hamilton                | 3 Active
+117  | "WILLSON Road"                 | Welland                 | 1 Active
+397  | "Front Street W"               | Toronto C01             | 5 Active
+6523 | "WELLINGTON Road"              | Centre Wellington       | 10 Active
+40   | "Ellis Drive"                  | Brampton                | 1 Active
+5260 | "Dundas Street"                | Burlington              | 2 Active
+484  | "Spadina Avenue"               | Toronto C01             | 8 Active
+2502 | "Rutherford Road"              | Vaughan                 | 2 Active
+481  | "Rupert Avenue"                | Whitchurch-Stouffville  | 8 Active
+1016 | "Falgarwood Drive"             | Oakville                | 2 Active
+38   | "Water Walk Drive"             | Markham                 | 20 Active
+25   | "Trailwood"                    | Mississauga             | 1 Active (one-word)
+10   | "Markbrook Lane"               | Toronto W10             | 1 Active
+19   | "Dawson Drive"                 | Collingwood             | 3 Active
+19   | "Singer Court"                 | Toronto C15             | 10 Active
+250  | "Sydenham Street"              | London East             | 2 Active
+555  | "Yonge Street"                 | Toronto C08             | 4 Active
+441  | "Barrie Road"                  | Orillia                 | 3 Active
+```
+
+**Observations on DB street_name format**: uppercase-mixed (`WILLSON`, `WELLINGTON`), some include the full street-type suffix (`Road`, `Drive`, `Street`, `Avenue`), some don't (`Trailwood` — 1 word only). Directional as last-word abbreviated is standard (`Front Street W`).
+
+##### GAP 2.4-5 — DB vs PropTx side-by-side (15 buildings)
+
+For each building, DB's `street_name` value + PropTx's actual returned `StreetName` variants + sample `UnparsedAddress`. Genuine count = PropTx-active listings whose `unparsed_address` contains the building's real street token.
+
+| DB slug | DB street_name | PropTx StreetName variants (all distinct) | Sample UnparsedAddress | Genuine |
+|---|---|---|---|---:|
+| `bliss-condos-55-east-liberty-street-toronto` | `East Liberty Street` | `"East Liberty"` (only one) | `55 East Liberty Street 909, Toronto, ON M6K 3R2` | 9 |
+| `55-e-liberty-street-toronto-c01` (phantom) | `E Liberty Street` | `"East Liberty"` (only one) | `55 East Liberty Street 909, Toronto, ON M6K 3R2` | 9 |
+| `liberty-market-tower-135-e-liberty-street-toronto-c01` (phantom) | `E Liberty Street` | `"East Liberty"` | `135 East Liberty Street 1107, Toronto, ON M6K 3K4` | 12 |
+| `20-n-park-road-vaughan` (phantom) | `N Park Road` | `"North Park"` (only one; other "park"-substring streets excluded by unparsed filter) | `20 North Park Road 1108, Vaughan, ON L4J 0G7` | 15 |
+| `centre-park-condos-20-north-park-road-vaughan` (correct) | `North Park Road` | `"North Park"` | `20 North Park Road 1108, Vaughan, ON L4J 0G7` | 15 |
+| `50-o-neil-road-toronto-c13` | `O Neil Road` | `"O'Neill"`, `"O'neill"` (case + apostrophe variance) | `50 O'neill Road 2803, Toronto, ON M3C 0R1` | 18 |
+| `parkside-tower-1-de-boers-drive-toronto-w05` | `De Boers Drive` | `"De Boers"` (only one) | `1 De Boers Drive 314, Toronto, ON M3J 0G6` | 6 |
+| `reunion-crossing-10-ed-clark-gardens-toronto-w03` | `Ed Clark Gardens` | (none — 0 active PropTx rows for "ed clark") | — | 0 |
+| `eleven-residences-11-st-joseph-toronto` | `St Joseph` | `"St Joseph"`, `"st joseph"` (case variance) | `11 St Joseph Street 1802, Toronto, ON M4Y 3G4` | 6 |
+| `the-britt-residences-955-bay-st-toronto` | `Bay St` | `"Bay"`, `"bay"` (case variance) | `955 Bay Street 2414, Toronto, ON M5S 0C6` | 35 |
+| `70-princes-street-toronto-c08` | `Princes Street` | `"Princess"`, `"princess"`, `"Princess St"` (DB says "Princes", PropTx says "Princess" — extra 's') | `70 Princess Street 808, Toronto, ON M5A 0X6` | 21 |
+| `484-spadina-avenue-toronto-c01` | `Spadina Avenue` | `"Spadina"` (only one) | `484 Spadina Avenue 308, Toronto, ON M5S 0E4` | 1 |
+| `apex-condos-397-front-street-w-toronto` | `Front Street W` | `"Front"` (directional NOT in StreetName; also `Front Street W` and `Front Street N` mixed in unparsedAddress — one 397 has 'N' suffix) | `397 Front Street W 2310, Toronto, ON M5V 3S1` | 5 |
+| `the-residences-of-555-yonge-st-555-yonge-street-toronto-c08` | `Yonge Street` | `"Yonge"` | `555 Yonge Street 407, Toronto, ON M4Y 3A6` | 3 |
+| `riverview-condos-38-water-walk-drive-markham` | `Water Walk Drive` | `"Water Walk"`, `"Water walk"` (case) | `38 Water Walk Drive 321, Markham, ON L3R 6M8` | 16 |
+
+**Key findings from side-by-side**:
+
+1. **PropTx `StreetName` does NOT include street-type suffix** (Street/Road/Drive/Avenue). DB `street_name` usually DOES. Example: DB `"East Liberty Street"` vs PropTx `"East Liberty"`.
+2. **PropTx `StreetName` does NOT include directional as separate word** in most cases. For 55 East Liberty, PropTx has `"East Liberty"` — directional is embedded IN the street name. For 397 Front Street W, PropTx has just `"Front"` — directional is NOT in StreetName (probably in `StreetDirSuffix`).
+3. **PropTx has case variance** for the same real street: `"Bay"` / `"bay"`, `"St Joseph"` / `"st joseph"`, `"Water Walk"` / `"Water walk"`, `"O'Neill"` / `"O'neill"`.
+4. **PropTx has SPELLING variance**: `"Princess"` vs DB `"Princes"` for 70 (one 's' vs two 's').
+5. **`UnparsedAddress` is more consistent** than `StreetName`: always in form `<num> <street-with-suffix> [<unit>], <city>, ON <postal>`. Case variance still present but the address string is complete and canonical.
+6. **Number of distinct StreetName variants per building** varies: 1 (Spadina, Yonge, Bay's genuine Bay) to 3 (O'Neill's 3 variants). O'Neill's 4-variant count noted earlier was inflated by including hits from other 50-X streets; when filtered to genuine, it's 2 case-variants.
+
+##### GAP 3.6 — PropTx full field list
+
+Sample PropTx Property row has **440 total fields**. Address / geo / building-related fields (35):
+
+```
+AssociationAmenities: [array of features]
+AssociationFee: 716.7
+AssociationFeeIncludes: [array]
+AssociationName: "TSCC"      ← Toronto Standard Condominium Corp; generic, not a unique building ID
+AssociationYN: true
+BuildingAreaTotal: null
+BuildingAreaUnits: null
+BuildingName: null           ← usually null; not a reliable building identifier
+City: "Toronto C01"
+CityRegion: "Niagara"        ← neighborhood-level label
+CommunityFeatures: []
+Country: "CA"
+CrossStreet: "King & Strachan"  ← cross-street reference
+DevelopmentChargesPaid: []
+FinancialStatementAvailableYN: null
+GreenPropertyInformationStatement: null
+InternetAddressDisplayYN: true
+MLSAreaDistrictOldZone: "C01"
+MLSAreaDistrictToronto: "C01"
+MLSAreaMunicipalityDistrict: "Toronto C01"
+PercentBuilding: null
+PostalCode: "M6K 3R2"        ← ✓ present and consistently populated
+SeatingCapacity: null
+SeniorCommunityYN: null
+StateOrProvince: "ON"
+StreetDirPrefix: null        ← EXISTS but often null; PropTx embeds directional in StreetName instead
+StreetDirSuffix: null        ← same
+StreetName: "East Liberty"
+StreetNumber: "55"
+StreetSuffix: "Street"       ← ✓ separate field for street-type suffix
+StreetSuffixCode: "St"       ← abbreviated form of suffix
+UnparsedAddress: "55 East Liberty Street 909, Toronto, ON M6K 3R2"
+VendorPropertyInfoStatement: false
+WellCapacity: null
+WellCapacityUnits: null
+```
+
+**Notable presence**:
+- `StreetDirPrefix` / `StreetDirSuffix` — dedicated directional fields (often null for this data; PropTx embeds "East" in StreetName rather than in Prefix)
+- `StreetSuffix` / `StreetSuffixCode` — separate suffix fields (`"Street"` / `"St"`)
+- `PostalCode` — populated
+- `CrossStreet` — natural-language cross-street ("King & Strachan")
+- `AssociationName` — condo corp identifier ("TSCC") — too generic to identify a building
+- `BuildingName` — usually null
+
+**Notable absence** (searched all 440 fields, no matches for): no `Latitude`, `Longitude`, `Coordinates`, `Geolocation`, `BuildingID`, `ComplexID`, `DevelopmentID`, `PropertyGroupID` fields.
+
+##### GAP 3.7 — postal code discrimination
+
+**Genuine 55 East Liberty (all 9 active)**: postal codes M6K 3P5, M6K 3P9 (majority), M6K 3R1, M6K 3R2. **All share FSA `M6K` + starting `3`**. Very tight cluster.
+
+**Contaminating listings tagged to phantom 55-E-Liberty (sample of 15)**: postal codes for real address:
+
+```
+55 Nugget Avenue         → M1S 3L1
+55 Delisle Avenue        → M4V 1S8
+55 De Boers Drive        → M3J 0G5
+55 Adelaide Street E     → M5C 1K6
+55 Charles Street E      → M4Y 0J1
+55 Collinsgrove Road     → M1E 4Z2
+55 Ridgecrest Drive      → M1W 4A3
+55 Cooper Street         → M5E 0G1
+55 Mercer Street         → M5V 0W4
+55 Merchants Wharf N/A   → M5A 0P2
+```
+
+**Every contaminating postal has a different FSA (first 3 chars)** from M6K. `StreetNumber + PostalCode[0:3]` (FSA) uniquely discriminates:
+- 55 East Liberty (genuine): M6K
+- 55 Nugget: M1S
+- 55 Cooper: M5E
+- 55 Mercer: M5V
+- 55 Charles E: M4Y
+- 55 Delisle: M4V
+- 55 De Boers: M3J
+- 55 Adelaide E: M5C
+- 55 Ridgecrest: M1W
+- 55 Collinsgrove: M1E
+- 55 Merchants Wharf: M5A
+
+**Postal discrimination is CLEAN** for the 55-E-Liberty case. `(StreetNumber, Postal-FSA)` is unique-per-building at this level.
+
+**Within Bliss Condos (single building)**: distinct postals from a sample of 20 rows = only `M6K 3P5` visible in this sample. Different units/floors have different postal suffixes (M6K 3P5, M6K 3P9, M6K 3R1, M6K 3R2), so the full postal is 1-N per building (many postals per building), but the FSA is 1-per-building (or per-block).
+
+##### GAP 3.8 — UnparsedAddress format
+
+Sample of 50 most-recent Active listings, PropTx-side:
+
+Sample values: `"28 John Smith Street, East Gwillimbury, ON L9N 0S7"`, `"17 Lizzie's Lane, McKellar, ON P2A 0B4"`, `"5025 Four Springs Avenue 1203, Mississauga, ON L5R 0G5"`, `"275 Manse Road 66, Toronto, ON M1E 4X8"`, `"470 Front Street W 1412, Toronto, ON M5V 0V6"`, `"3876 Muskoka Rd 118 Highway W Sandfield 3 W3, Muskoka Lakes, ON P0B 1J0"`, `"1212 Fox Hill Street Bsmt, Innisfil, ON L9S 4Y5"`, `"25 The Esplanade N/A 808, Toronto, ON M5E 1W5"`, `"11 Stavebank Road N, Mississauga, ON L5G 2T3"`.
+
+**Format**: `<street-number> <street-name-with-suffix> [<unit>], <city>, ON <postal-code>`
+
+- **49/50 (98%) start with a numeric street number** (`^\d`). 1 exception: `"Lot 214 2 Road S, ..."` (rural lot number).
+- **50/50 (100%) contain a valid Canadian postal code** (regex `[A-Z]\d[A-Z]\s?\d[A-Z]\d`).
+- Unit indicator (e.g. "1203", "66", "1412", "Bsmt", "Sandfield 3 W3") appears BEFORE the first comma, AFTER street suffix. Formats vary: sometimes just a number, sometimes has "N/A" placeholder, sometimes "Bsmt"/"Upper"/"Lower".
+
+**Consistency**: high enough to prefix-match on `<street-number> <street-name>` (before unit) reliably. The unit portion follows a predictable position (after street-suffix, before first comma).
+
+##### Raw takeaways (no design proposals here)
+
+- **21 single-letter first-word `street_name` values** — all directional-abbreviation cases (E/W/N/S/O/A/B/C/-). Position: always first-word. 12/87 = ~12% of directional-prefixed streets use abbreviated first-word form.
+- **Compound directionals (NE/NW/SE/SW)** do NOT exist in `buildings.street_name`. Confirmed empty from data.
+- **PropTx's `StreetName` field**: usually excludes street-type suffix (`"East Liberty"` not `"East Liberty Street"`), sometimes excludes directional as separate word (embeds `"East"` into name), has real case variance (`"Bay"` / `"bay"`) and occasional apostrophe variance (`"O'Neill"` / `"O'neill"`).
+- **PropTx has decomposed address fields**: `StreetNumber`, `StreetName`, `StreetSuffix`, `StreetSuffixCode`, `StreetDirPrefix`, `StreetDirSuffix`, `PostalCode`. Directional prefix/suffix fields often null when directional is embedded in `StreetName`.
+- **PropTx `UnparsedAddress`** is consistently formatted (98% start with number, 100% contain valid postal). Prefix-matchable to `<street-number> <street-name>` before the first comma.
+- **`PostalCode` cleanly discriminates** cross-address contamination: 55 East Liberty is M6K, 55 Nugget is M1S, 55 Cooper is M5E, etc. — every different building has a different FSA (first 3 chars).
+- **No lat/long, no `BuildingID`, no complex ID** in PropTx's 440 fields. `AssociationName` ("TSCC") is generic. `BuildingName` is usually null. **The only building-identifying signals PropTx provides are: `StreetNumber` + `StreetName` + `StreetSuffix` (+ `StreetDirPrefix`/`Suffix`) + `PostalCode` + `UnparsedAddress`**.
+
+##### Claimed, unverified
+
+- Total `StreetDirPrefix`/`StreetDirSuffix` populated-ness across the full PropTx feed — only checked one row (both null for a "55 East Liberty" active). Sampling ~50 rows would confirm whether this is typical or if some rows populate these fields.
+- Whether `CrossStreet` is populated consistently across all Toronto Active listings — one sample row has "King & Strachan". Not systematically checked.
+- Whether `AssociationName` values (e.g., "TSCC") + condo-corp-number pair form a unique building ID somewhere; not exercised this session.
+
+**STOP.** Zero DB/code writes. Tracker updated only.
 
 
+
+
+---
+
+## POSTAL-KEY VIABILITY TEST (2026-07-11) -- READ-ONLY
+
+Testing whether `(StreetNumber + PostalCode-FSA)` works UNIVERSALLY as a building discriminator before designing a matcher on it. Zero DB/code writes. Data first, no design.
+
+### Q1 -- COLLISION TEST: are (StreetNumber, FSA) pairs unique across buildings?
+
+Method: over all Active mls_listings, group by `(StreetNumber, SUBSTRING(postal_code,1,3))` and count DISTINCT street_names per pair. Scoped to M-prefix (Toronto) postals.
+
+**Result -- 20.6% collision rate.** 1,600 of 7,767 M-prefix (StreetNumber, FSA) pairs contain 2+ distinct street names.
+
+Worst examples:
+- `18 / M2N` -> 10 distinct streets
+- `10 / M1L` -> 6 streets: Emmott, Faulkland, Mendelssohn, Sundridge, Tartan, Wilkes
+- `10 / M2N` -> 6 streets: Blyth Dale, Fashion Roseway, Kenneth, Northtown, Teagarden, Waring
+- `20 / M3C` -> 6 streets: Edgecliff, Inn on the Park, O-Neill (multiple variants)
+- `2 / M4V` -> 6 streets: Clarendon, Forest, Forest Hill, Lynwood, St Clair (2 variants)
+
+**Verdict Q1: FSA is TOO COARSE to uniquely identify a building at scale. Postal-key alone fails.**
+
+### Q2 -- Does `buildings` have a postal_code column? Is it populated?
+
+- Column exists: `buildings.postal_code character varying`.
+- Populated: **0 of 9,835 rows.** Column is completely empty.
+
+Can postal be derived from a building's listings (FSA majority)?
+
+Sample of 10 buildings:
+- `bliss-condos-55-east-liberty` (clean): 62 listings, M6K=62 (100%). Clean derivation.
+- `484-spadina-avenue` (clean): 82 listings, M5S=82 (100%).
+- `70-princes-street` (clean): 200 listings, M5A=200 (100%).
+- `no55-mercer-condos-55-mercer` (mostly clean): M5V=198, M5W=1, M5M=1 -- dominant 99%.
+- `sugar-wharf-west-condos-55-cooper` (mostly clean): M5E=180, L4Z=1 -- 99.4% dominant.
+- `apex-condos-397-front-w` (mostly clean): M5V=190, M5A=1 -- 99.5% dominant.
+- `the-britt-residences-955-bay` (mostly clean): M5S=197, M5C=2, M2J=1 -- 98.5% dominant.
+- `centre-park-condos-20-north-park` (clean): 100 listings, L4J=99, L4G=1 -- 99%.
+- `the-residences-of-555-yonge` (clean): 67/67 M4Y (100%).
+- **`55-e-liberty-street-toronto-c01` (PHANTOM):** 200 sampled, spans **23 different FSAs** -- M4Y=81, M5V=34, M5E=23, M5J=14, M2N=9, M2J=6, M3J=5, M5A=5, M6K=4 (only 4 correct!), ... no dominant FSA.
+
+**Verdict Q2: FSA derivation works for clean buildings (>=98% concentration). For phantom-contaminated buildings, self-derivation FAILS -- contamination dominates the true FSA, which is a chicken-and-egg problem.**
+
+### Q3 -- Validate (StreetNumber + FSA) on 20 of 104 affected buildings
+
+Method: for each target building, compute (a) dominant FSA of its Active listings, (b) count matching that FSA, (c) count where UnparsedAddress contains the second word of street_name (address-fuzzy proxy).
+
+Full 20-row table (`FSA-match` = rows sharing dominant FSA in current contaminated data):
+
+| slug | tot Active | dominant FSA (%) | genuine-by-address | FSA-match | rejected-by-FSA |
+|---|---:|---|---:|---:|---:|
+| 55-e-liberty-street-toronto-c01 | 313 | M4Y (13%) | 9 | 40 | 273 |
+| 75-e-liberty-street-toronto-c01 | 99 | M2N (19%) | 12 | 19 | 80 |
+| 150-e-liberty-street-toronto-c01 | 40 | M1B (20%) | 0 | 8 | 32 |
+| 49-e-liberty-street-toronto-c01 | 29 | M4B (17%) | 0 | 5 | 24 |
+| liberty-market-tower-135-e-liberty | 44 | M5A (43%) | 0 | 19 | 25 |
+| 20-n-park-road-vaughan | 11 | L4K (45%) | 1 | 5 | 6 |
+| 30-n-park-road-vaughan | 8 | L4K (50%) | 0 | 4 | 4 |
+| 7-n-park-road-vaughan | 14 | L4J (64%) | 9 | 9 | 5 |
+| fontana-99-s-town-centre-markham | 6 | L6G (100%) | 6 | 6 | 0 |
+| rodeo-drive-50-o-neill-w | 131 | M2J (14%) | 17 | 18 | 113 |
+| 50-o-neil-road-toronto | 5 | M1B (40%) | 0 | 2 | 3 |
+| bliss-55-east-liberty (CLEAN) | 1 | M6K (100%) | 1 | 1 | 0 |
+| liberty-lakeview-75-east-liberty (CLEAN) | 1 | M6K (100%) | 1 | 1 | 0 |
+| centre-park-20-north-park (CLEAN) | 6 | L4J (100%) | 6 | 6 | 0 |
+| centre-park-30-north-park (CLEAN) | 2 | L4J (100%) | 2 | 2 | 0 |
+| 70-princes-toronto (CLEAN) | 21 | M5A (100%) | 21 | 21 | 0 |
+| 484-spadina-toronto (CLEAN) | 8 | M5S (100%) | 8 | 8 | 0 |
+| the-britt-955-bay (CLEAN) | 36 | M5S (97%) | 36 | 35 | 1 |
+| sugar-wharf-55-cooper (CLEAN) | 1 | M5E (100%) | 1 | 1 | 0 |
+| no55-mercer (CLEAN) | 0 | (none) | 0 | 0 | 0 |
+
+**Verdict Q3:**
+- For CLEAN buildings, self-derived dominant FSA correctly captures 100% genuine and rejects 100% contamination.
+- For PHANTOM buildings, the "dominant FSA" of the *contaminated* dataset is NOT the real FSA. E.g. 55-e-liberty's dominant is M4Y (81 rows) but the real Bliss listings live at M6K (4 rows). FSA-match on the phantom's own data recovers wrong rows and misses real ones. Self-derivation cannot bootstrap out of contamination without a clean-source hint.
+
+### Q4 -- MISS-NOTHING: do any legitimate buildings span multiple FSAs?
+
+Method: over buildings with >=10 Active listings, find those where the 2nd-most-common FSA has >=3 rows AND >=5% share.
+
+**Result: 40 buildings meet the threshold. Of those, 32 are non-phantom.** At stricter threshold (2nd FSA >=5 rows AND >=10% share), 16 buildings meet, 11 non-phantom.
+
+Non-phantom examples of genuine multi-FSA spanning:
+- `parkside-tower-1-de-boers-drive`: total=43, M5E=17 (40%), M3C=12 (28%), M3J=6 (14%)
+- `imperial-plaza-condos-111-st-clair-w`: total=37, M4V=20 (54%), M5V=10 (27%), M9W=4 (11%)
+- `uc-tower-2-2545-simcoe-oshawa`: total=36, L1L=31 (86%), L1H=5 (14%)
+- `westline-condos-1100-sheppard-w`: total=34, M3K=20 (59%), M3J=10 (29%)
+- `five-condos-5-st-joseph`: total=34, M4Y=19 (56%), M3J=7 (21%)
+- `jac-condos-308-jarvis`: total=33, M5B=22 (67%), M5A=11 (33%)
+- `queen-central-100-queen-e`: total=43, M5C=40 (93%), M8Z=3
+- `key-west-condos-36-park-lawn`: total=18, M8V=7, M8Y=7, M6R=4
+- `reunion-crossing-10-ed-clark-gardens`: total=18, M3C=9 (50%), M3N=8 (44%)
+
+**Verdict Q4: some legitimate buildings genuinely span multiple FSAs.** Not verified as fully genuine (some may still be contamination), but the volume -- 11-32 buildings at reasonable thresholds -- is high enough that a strict FSA-equality filter would drop real listings.
+
+This is a direct hit on operator condition 1 (miss nothing). FSA-strict fails it.
+
+### Q5 -- FALLBACK: does UnparsedAddress prefix-match resolve the failure cases?
+
+Method: for each of the 20 test buildings, count Active listings where `LOWER(unparsed_address)` starts with either "num + full-street-name" or "num + second-word-of-street-name".
+
+| slug | tot | FSA-match | full-street-prefix | 2nd-word-prefix |
+|---|---:|---:|---:|---:|
+| 55-e-liberty (phantom) | 313 | 40 | 0 | 0 |
+| 75-e-liberty (phantom) | 99 | 19 | 0 | 0 |
+| 150-e-liberty (phantom) | 40 | 8 | 0 | 0 |
+| 49-e-liberty (phantom) | 29 | 5 | 0 | 0 |
+| 135-e-liberty (phantom) | 44 | 19 | 0 | 0 |
+| 20-n-park (phantom) | 11 | 5 | 0 | 0 |
+| 30-n-park (phantom) | 8 | 4 | 0 | 0 |
+| 7-n-park (phantom) | 14 | 9 | 0 | 0 |
+| 99-s-town-centre (phantom) | 6 | 6 | 0 | 0 |
+| 50-o-neill-w (phantom) | 131 | 18 | 0 | 0 |
+| 50-o-neil (phantom) | 5 | 2 | 0 | 0 |
+| bliss-55-east-liberty (CLEAN) | 1 | 1 | 1 | 0 |
+| liberty-lakeview-75-east-liberty (CLEAN) | 1 | 1 | 1 | 0 |
+| centre-park-20-north-park (CLEAN) | 6 | 6 | 6 | 0 |
+| centre-park-30-north-park (CLEAN) | 2 | 2 | 2 | 0 |
+| 70-princes (CLEAN) | 21 | 21 | 0 | 0 |
+| 484-spadina (CLEAN) | 8 | 8 | 8 | 0 |
+| the-britt-955-bay (CLEAN) | 36 | 35 | 36 | 0 |
+| sugar-wharf-55-cooper (CLEAN) | 1 | 1 | 1 | 0 |
+| no55-mercer (CLEAN) | 0 | 0 | 0 | 0 |
+
+Sample UnparsedAddress data by building (diagnostic):
+- `55-e-liberty` (phantom, street_name="E Liberty Street"): sample UAs "55 Nugget Avenue", "55 Delisle Avenue", "55 De Boers Drive", "55 Adelaide Street E" -- all contamination, no East Liberty.
+- `bliss-55-east-liberty` (correct sibling, street_name="East Liberty Street"): UA "55 East Liberty Street 1912" -- matches full-prefix.
+- `70-princes` (street_name="Princes Street"): UA "70 Princess Street" (double-s). Full-prefix "70 Princes Street" FAILS to match "70 Princess Street" because Princes != Princess. Real MLS-vs-DB spelling variance.
+- `50-o-neill-w` (phantom, street_name="O -Neill Road W" with weird space+apostrophe): UA "50 O-Neill Road 1208" -- apostrophe placement + no "W" -> prefix fails.
+- `20-n-park` (phantom, street_name="N Park Road"): UAs "20 Fenyrose Crescent", "20 Staffern Drive", "20 Uplands Avenue", "20 Gatineau Drive" -- all contamination.
+- `centre-park-20-north-park` (correct sibling, street_name="North Park Road"): UA "20 North Park Road 509" -- matches full-prefix 6/6.
+- `the-britt-955-bay` (street_name="Bay St"): UAs "955 Bay Street 323". Full-prefix "955 Bay St" MATCHES (startsWith), so 36/36.
+
+**Verdict Q5 -- UnparsedAddress prefix-match:**
+- Works PERFECTLY (100% recall + 100% precision) on CLEAN buildings whose `street_name` matches the actual UnparsedAddress spelling: bliss 1/1, centre-park-20 6/6, centre-park-30 2/2, 484-spadina 8/8, sugar-wharf 1/1, britt 36/36.
+- FAILS for phantoms because the phantom's abbreviated street_name ("E Liberty", "N Park", "S Town", "O Neill Road W") does not literally prefix any real Toronto address in the DB.
+- FAILS for street-name spelling variance: "Princes" vs "Princess" (70-princes 21 real listings, 0 caught by prefix).
+- FAILS silently on abbreviation/expansion asymmetry unless normalized: "St" vs "Street", "Ave" vs "Avenue", "Rd" vs "Road", apostrophe placement ("ONeill" vs "O Neill" vs "O-Neill").
+
+The prefix-match is a strong SECONDARY key when the DB street_name is normalized/canonical, but on its own it inherits the abbreviation-and-variance problem.
+
+### OVERALL VERDICT
+
+**Postal-key (StreetNumber + FSA) is NOT viable universally.**
+
+| Test | Passes universally? |
+|---|---|
+| Q1 collision (2 real buildings share pair) | NO -- 20.6% M-prefix pairs collide, some pairs hold 6-10 distinct streets |
+| Q2 postal derivable per building | Partial -- works for clean (>=98% one FSA) buildings, fails for phantoms whose data is >85% contamination |
+| Q3 separates genuine from contamination | NO -- self-derived FSA on contaminated phantoms is the WRONG FSA (contamination's dominant, not the real one) |
+| Q4 miss-nothing (all genuine live in one FSA) | NO -- 11-32 non-phantom buildings genuinely span 2+ FSAs at 10-40% share of listings |
+| Q5 UnparsedAddress-prefix fallback | Partial -- works for canonically-spelled clean buildings, fails on abbreviations, spelling variants, apostrophe placement |
+
+**Where postal alone breaks:**
+1. Same street_number in the same FSA but different streets (20.6% collision).
+2. Phantom buildings where the majority of currently-attached listings are contamination -- cannot self-derive correct FSA.
+3. Genuine multi-FSA buildings -- corner/boundary buildings where MLS agents enter slightly different postal codes.
+
+**Minimum additional check needed:**
+- A normalized (StreetNumber + normalized-street-name) composite match, where normalization does: expand directional abbreviations (E->East, N->North, S->South, W->West), expand suffix (St->Street, Ave->Avenue, Rd->Road, Blvd->Boulevard), remove apostrophes and extra spaces, lowercase, and handle known spelling variants (Princes/Princess -- need explicit alias table or Levenshtein-1 fuzz).
+- Postal FSA becomes a TIE-BREAKER for the 20.6% ambiguous (num, FSA) collision cases and a corroborating signal, but not the primary key.
+
+### UNVERIFIED / FLAGS
+
+- Q4 "spanning" buildings are not verified as truly genuine. Some may themselves be contamination (e.g., 5 St Joseph's "St Joseph" is a 2-char first-word -- could be catching cross-hits). A tighter re-check would require reading UnparsedAddress and confirming each spanning row is genuinely at that address.
+- The 20.6% collision rate is scoped to M-prefix (Toronto) postals only, not the full 9,835-building set. Suburban buildings (L, K, N prefixes) not tested here.
+- The "clean" baseline of ~9,814 buildings in Q4 is defined as "no single-letter first-word street_name", which excludes the 21 phantoms but does not exclude the other ~83 lower-confidence contaminated buildings in the 104 set.
+- No writes were performed. Buildings table, mls_listings table, and sync script are unchanged.
+
+### STOP -- data reported, no design proposed.

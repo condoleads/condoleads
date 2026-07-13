@@ -2,10 +2,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// HARDEN 2026-07-12: custom_domain is intentionally NOT in this function's
+// payload or its input signature. A tenant's root-agent custom_domain is the
+// key the domain-resolver (getAgentByCustomDomain) uses to route the entire
+// site — nulling it takes the tenant 404. Route custom_domain writes through
+// the dedicated actions only: addAgentCustomDomain (set) and
+// removeAgentCustomDomain (clear). This save form never touches it.
 export async function updateAgentBranding(
   agentId: string,
   data: {
-    custom_domain?: string | null
     site_title?: string | null
     site_tagline?: string | null
     og_image_url?: string | null
@@ -30,11 +35,10 @@ export async function updateAgentBranding(
   }
 ) {
   const supabase = createClient()
-  
+
   const { error } = await supabase
     .from('agents')
     .update({
-      custom_domain: data.custom_domain || null,
       site_title: data.site_title || null,
       site_tagline: data.site_tagline || null,
       og_image_url: data.og_image_url || null,
