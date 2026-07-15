@@ -797,7 +797,18 @@ function mapCompleteDLAFields(listing: any, areaId: string, municipalityId: stri
     available_in_dla: true,
 
     // ===== SYSTEM =====
-    created_at: new Date().toISOString(),
+    // LANE-B-SYNC-ACCURACY-FIX Phase 1b (mirrored from
+    // sync-buildings-incremental.ts:554-566, applied here 2026-07-15):
+    // created_at is OMITTED from the payload. This object is passed to
+    // supabase.upsert(mapped, { onConflict: 'listing_key' }) which becomes
+    // INSERT ... ON CONFLICT (listing_key) DO UPDATE SET <every column
+    // from payload> = EXCLUDED.<column>. Including created_at here would
+    // overwrite the existing row's creation timestamp on every UPSERT
+    // that hits the UPDATE branch — corrupts "when was this row born".
+    // DB column mls_listings.created_at has DEFAULT now(), so INSERT
+    // still gets a fresh created_at; UPDATE preserves the existing value
+    // because the column is absent from the SET list. updated_at IS kept
+    // in the payload — we WANT it to advance on every touch.
     updated_at: new Date().toISOString(),
     last_synced_at: new Date().toISOString(),
     sync_source: 'dla'
