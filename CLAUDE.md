@@ -184,3 +184,19 @@ Geo tables: `treb_areas`, `municipalities`, `communities`, `neighbourhoods`, `mu
 ## Current active work
 
 See `docs/W-TERRITORY-MASTER-TRACKER.md` for the locked territory-routing model (v16) and phase roadmap. That tracker is the authoritative spec for the active build.
+## RULE ZERO — EXECUTOR REPORTS ARE NOT PROOF
+
+A Claude Code report claiming completed work is a CLAIM, not evidence. It is not
+fact until proven in the SAME turn by raw output:
+- Code shipped → paste `git log origin/main -1 --oneline` showing the SHA.
+  A SHA not present in origin/main did NOT ship. (Fabricated SHAs have appeared ~21x.)
+- DB state changed → paste a fresh SELECT showing the new state.
+- No raw proof in hand → status is "claimed, UNVERIFIED", never "done".
+
+Never relay a completed-work claim to the operator, and never build the next dispatch's
+premises on it, without that proof. Reports pasting raw query output are trustworthy;
+reports with polished conclusions and tidy before/after tables are suspect until re-queried.
+
+READ THE EXECUTOR'S FULL OUTPUT before responding. If it contains "HARD REFUSAL" or
+flags a false premise, THAT is the headline — address it first, do not skip to the
+happy numbers.
