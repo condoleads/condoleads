@@ -1,0 +1,61 @@
+name: Geo Full Weekly Sync
+
+# PART 3 — weekly full geo-driven sync (safety net for the daily).
+# Runs scripts/sync-geo-full.ts (added in 36471e1). Per municipality:
+#   1. Pull PropTx WHERE ModificationTimestamp > now - GEO_FULL_LOOKBACK_DAYS
+#      (default 30). Both Residential Freehold and Residential Condo &
+#      Other. Commercial excluded by design.
+#   2. Upsert via saveHomesListings (batch=150 + split-retry + INT4/decimal
+#      clamps from 8b38f5a).
+#   3. NO reconciler here — this pass insertion-covers listings the daily's
+#      cursor-based pull would miss (PropTx-Active-not-in-DB direction).
+#
+# Verified at 506-muni scale 2026-07-15/17: 8h27min wall clock initially,
+# 247k listings pulled, 0 skipped after 8b38f5a fixes, buildings unchanged.
+# Full raw output on commit 8b38f5a.
+
+on:
+  schedule:
+    - cron: '0 10 * * 0'   # Sunday 10:00 UTC = 05:00 EST weekly
+                           # 2h AFTER Sunday's Geo Daily (08:00 UTC).
+                           # Daily always finishes well before then (48min max
+                           # observed), so no overlap risk.
+  workflow_dispatch:
+    inputs:
+      muni_filter:
+        description: 'Optional comma-separated muni names to restrict run to'
+        required: false
+        default: ''
+      lookback_days:
+        description: 'Lookback window for ModificationTimestamp filter (days)'
+        required: false
+        default: '30'
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
+  PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
+
+jobs:
+  geo-full:
+    runs-on: ubuntu-latest
+    # Observed: 8h27min initial full run. Cap at 720min (12h) — well above
+    # observed max but below GitHub Actions' 6h-per-job soft limit... actually
+    # GH Actions caps at 6h per job on ubuntu-latest for public repos.
+    # Confirmed max is 21600s = 360min. Setting to 360min. If run exceeds,
+    # the muni-level sync_history cursor means a rerun resumes correctly
+    # (per-muni idempotent UPSERT); the resume just re-processes any
+    # already-done munis (safe, wasteful).
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run geo full weekly (change-window UPSERT, no reconciler)
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-full.ts
+        env:
+          GEO_FULL_MUNI_FILTER: ${{ inputs.muni_filter }}
+          GEO_FULL_LOOKBACK_DAYS: ${{ inputs.lookback_days || '30' }}

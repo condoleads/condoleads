@@ -1,0 +1,66 @@
+name: Geo Daily Sync
+
+# PART 3 — change-driven daily sync + stale-active reconciler.
+# Runs scripts/sync-geo-daily.ts (added in 9d1788d). Per municipality:
+#   1. Cursor = last sync_history.completed_at for the muni (any sync type),
+#      fallback GEO_DAILY_FALLBACK_DAYS (default 7d) if never synced.
+#   2. Change-driven pull: PropTx WHERE ModificationTimestamp > cursor.
+#      Reuses saveHomesListings (batch=150 + split-retry + INT4/decimal
+#      clamps from 8b38f5a).
+#   3. Reconciler: pull PropTx currently-Active listing_keys, diff against
+#      DB Active in that muni, flip stale-Actives to 'Expired'. Safety
+#      guards: skip on empty/errored PropTx response, skip on >50% flip
+#      ratio (>20-active munis).
+#
+# Verified at 506-muni scale 2026-07-17: 47.7 min wall clock, 2137 changes
+# saved (0 skipped), 2386 stale-actives flipped, 36 munis correctly
+# safety-guard-skipped, row count +635 (never dropped), buildings 9820
+# unchanged. Full raw output on commit 9d1788d.
+
+on:
+  schedule:
+    - cron: '0 8 * * *'   # 08:00 UTC = 03:00 EST daily
+                          # Placed 1h AFTER the old 07:00 UTC nightly cron slot
+                          # so the two never overlap if operator ever re-enables
+                          # the old workflow for a specific manual purpose.
+  workflow_dispatch:
+    inputs:
+      muni_filter:
+        description: 'Optional comma-separated muni names to restrict run to'
+        required: false
+        default: ''
+      fallback_days:
+        description: 'Cursor fallback lookback (days) when a muni has no prior sync_history'
+        required: false
+        default: '7'
+      reconcile:
+        description: 'Run stale-active reconciler'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+        default: 'true'
+
+env:
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
+  PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
+
+jobs:
+  geo-daily:
+    runs-on: ubuntu-latest
+    # Observed: 47.7min at 506-muni scale. Cap at 90min for safety margin.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run geo daily (change-driven + reconciler)
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-daily.ts
+        env:
+          GEO_DAILY_MUNI_FILTER: ${{ inputs.muni_filter }}
+          GEO_DAILY_FALLBACK_DAYS: ${{ inputs.fallback_days || '7' }}
+          GEO_DAILY_RECONCILE: ${{ inputs.reconcile == 'false' && '0' || '1' }}

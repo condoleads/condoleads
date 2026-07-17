@@ -1,7 +1,13 @@
-name: Nightly MLS Sync
+name: Nightly MLS Sync (RETIRED — manual only)
+# CRON RETIRED 2026-07-17: replaced by Geo Daily Sync (scripts/sync-geo-daily.ts,
+# cron 08:00 UTC) + Geo Full Weekly Sync (scripts/sync-geo-full.ts, cron Sunday
+# 10:00 UTC). The old scripts/nightly-sync.ts is the 6h-ceiling-hitting design
+# that the new geo sync pair replaces. Workflow kept + workflow_dispatch kept so
+# an operator can still run it manually if a specific need arises, but the
+# schedule is OFF so it never fires alongside the new syncs (which would double
+# the PropTx call rate and create UPSERT contention on mls_listings). Original
+# cron was:  '0 7 * * *'   # 2 AM EST = 7 AM UTC
 on:
-  schedule:
-    - cron: '0 7 * * *'   # 2 AM EST = 7 AM UTC
   workflow_dispatch:
     inputs:
       skip_homes:
