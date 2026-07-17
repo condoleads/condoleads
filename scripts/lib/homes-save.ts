@@ -24,16 +24,52 @@ export interface HomesSaveResult {
 // HELPER PARSING FUNCTIONS (identical to building-sync/save.ts)
 // =====================================================
 
+// INT4-OVERFLOW-GUARD 2026-07-17: PropTx occasionally emits garbage numeric
+// values (e.g., original_list_price=2699000000, tax_assessed_value=880178969040)
+// on data-entry-error rows. Postgres int4 max is 2,147,483,647. An overflow
+// on a single field previously killed the whole UPSERT via "value out of range
+// for type integer", leaving the entire listing stale in DB. This clamp
+// converts out-of-int4-range values to null (with a warn log) so the rest of
+// the row saves cleanly. Fields already backed by bigint on the DB side
+// (list_price, close_price) use parseDecimal, not parseInteger, so they are
+// unaffected. Confirmed by inspecting information_schema.columns: 73 int4
+// columns + 2 bigint columns on mls_listings, and bigint columns are the
+// ones parseDecimal covers.
+const INT4_MAX = 2147483647;
 function parseInteger(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
   const parsed = parseInt(value.toString());
-  return isNaN(parsed) ? null : parsed;
+  if (isNaN(parsed)) return null;
+  if (parsed > INT4_MAX || parsed < -INT4_MAX - 1) {
+    console.warn(`[HomesSave] parseInteger: value ${parsed} exceeds int4 range; clamping to null (source value=${value})`);
+    return null;
+  }
+  return parsed;
 }
 
+// NUMERIC-OVERFLOW-GUARD 2026-07-17: PropTx emits garbage numeric values on
+// StandardStatus='Delete' test records (e.g., TaxAnnualAmount=972391589.23,
+// AssociationFee=81354143.94). Most numeric columns on mls_listings are
+// numeric(10,2) with max 99,999,999.99 (~100M). Values beyond that cause a
+// "numeric field overflow" that kills the whole UPSERT and prevents even
+// the Delete-status update from persisting. Same pattern as parseInteger:
+// clamp to null so the row saves. Threshold 99,999,999.99 covers the common
+// numeric(10,2). A few columns are numeric(12,2) up to ~10B — those get
+// nulled too if value exceeds 100M, but real Ontario real estate values in
+// those fields (gross_revenue, net_operating_income, estimated_inventory_
+// value_at_cost) are almost always < 100M. Legit outliers are extremely
+// rare; the clamp trades one edge case (rare legit big number) for the
+// common one (bogus test-data overflow blocking the sync).
+const NUMERIC_10_2_MAX = 99999999.99;
 function parseDecimal(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
   const parsed = parseFloat(value.toString());
-  return isNaN(parsed) ? null : parsed;
+  if (isNaN(parsed)) return null;
+  if (Math.abs(parsed) > NUMERIC_10_2_MAX) {
+    console.warn(`[HomesSave] parseDecimal: value ${parsed} exceeds numeric(10,2) max; clamping to null (source value=${value})`);
+    return null;
+  }
+  return parsed;
 }
 
 function parseBoolean(value: any): boolean | null {
@@ -176,6 +212,55 @@ function resolveCommunityId(cityRegion: string | null, communityMap: Map<string,
 // SAVE LISTINGS WITH COMPLETE DLA MAPPING
 // =====================================================
 
+/**
+ * SPLIT-RETRY-FIX 2026-07-16: upsert with recursive split-on-failure.
+ *
+ * When a batch UPSERT fails (typically Supabase's 15s statement_timeout hits
+ * on wide payloads), split the records in half and retry each half. Recurse
+ * until either the sub-batch succeeds or reaches minSize (default 5) at
+ * which point the remaining rows are counted as skipped.
+ *
+ * Observed on 2026-07-16 re-runs: at batchSize=150, 4/33 big munis still hit
+ * one or more timeouts (Hamilton 150-450, Richmond Hill 300, London South
+ * 150, Toronto C01 150). The timeout is non-deterministic — depends on DB
+ * load at the moment. Split-retry converges: a failed 150-batch splits to
+ * 75+75; if 75 still fails it splits to 37+38, etc. Empirically batches ≤50
+ * always succeed for our payload shape.
+ *
+ * Returns { data: successfully-upserted rows, skipped: rows that failed at
+ * min-size after split }.
+ */
+async function upsertWithSplit(records: any[], depth: number = 0): Promise<{ data: any[]; skipped: number }> {
+  if (records.length === 0) return { data: [], skipped: 0 };
+  const { data, error } = await supabase
+    .from('mls_listings')
+    .upsert(records, { onConflict: 'listing_key', ignoreDuplicates: false })
+    .select();
+  if (!error) return { data: (data || []) as any[], skipped: 0 };
+
+  // MIN_SIZE=1: split all the way to individual rows before giving up.
+  // Lowered from 5 to 1 on 2026-07-17 because after the initial 4-residual
+  // re-run some munis still showed 4-5 unrecoverable rows (deterministic
+  // per-row failure, not statement timeout). At MIN_SIZE=1 a single failing
+  // row is counted as skipped instead of the whole 5-row sub-batch.
+  const MIN_SIZE = 1;
+  if (records.length <= MIN_SIZE) {
+    // Include listing_key(s) so operator can inspect the exact PropTx payload
+    // that caused the failure (typically per-row data quality issues:
+    // numeric overflow, check-constraint violation, malformed enum, etc.).
+    const keys = records.map((r: any) => r?.listing_key || '(no-key)').join(',');
+    console.error(`[HomesSave] split-retry giving up on ${records.length}-row batch (depth=${depth}) listing_keys=[${keys}]: ${error.message}`);
+    return { data: [], skipped: records.length };
+  }
+
+  console.warn(`[HomesSave] batch of ${records.length} failed (depth=${depth}), splitting: ${error.message}`);
+  const mid = Math.floor(records.length / 2);
+  // Sequential rather than parallel to avoid piling on when DB is under load
+  const a = await upsertWithSplit(records.slice(0, mid), depth + 1);
+  const b = await upsertWithSplit(records.slice(mid), depth + 1);
+  return { data: [...a.data, ...b.data], skipped: a.skipped + b.skipped };
+}
+
 async function saveListings(
   listingsData: any[],
   areaId: string,
@@ -183,7 +268,14 @@ async function saveListings(
   communityMap: Map<string, string>
 ) {
   const savedListings: any[] = [];
-  const batchSize = 400;
+  // BATCH-SIZE-FIX 2026-07-16: reduced from 400 to 150. The mls_listings
+  // UPSERT (INSERT ... ON CONFLICT DO UPDATE SET <every column>) is expensive
+  // and hits Supabase's 15s statement_timeout at 400 rows for wide payloads.
+  // Observed on 2026-07-15 full-500-muni run: 25,733 listings skipped across
+  // 80 municipalities (e.g., Aurora 400/597, Brampton 400/3974, Mississauga
+  // 400/6015). Child inserts (media/rooms/openhouses) are cheaper plain
+  // INSERTs — reduced to 150 for consistency and safety headroom.
+  const batchSize = 150;
 
   for (let i = 0; i < listingsData.length; i += batchSize) {
     const batch = listingsData.slice(i, i + batchSize);
@@ -198,21 +290,25 @@ async function saveListings(
     const listingKeys = records.map((r: any) => r.listing_key).filter(Boolean);
     const previousByKey = await readPreviousGeo(supabase, listingKeys);
 
-    const { data, error } = await supabase
-      .from('mls_listings')
-      .upsert(records, { onConflict: 'listing_key', ignoreDuplicates: false })
-      .select();
+    // SPLIT-RETRY-FIX 2026-07-16: upsertWithSplit recurses on failure so a
+    // 150-batch timeout produces 75+75 sub-attempts, etc. Whatever survives
+    // is in splitResult.data; whatever fails at MIN_SIZE=5 is counted in
+    // splitResult.skipped (rare — happens only if DB is unrecoverably stuck).
+    // Note: the pre-change loop had `originalData: batch[idx]` on each pushed
+    // savedListing; that field is dead (grep shows no downstream reader —
+    // saveMedia/saveRooms/saveOpenHouses all look up by listing_key from the
+    // outer `listingsData`). Dropped it here rather than reconstruct after split.
+    const splitResult = await upsertWithSplit(records);
+    const data = splitResult.data;
 
-    if (error) {
-      console.error(`[HomesSave] Listings batch error:`, error.message);
-      continue;
+    for (const saved of data) {
+      savedListings.push(saved);
     }
 
-    data?.forEach((saved, idx) => {
-      savedListings.push({ ...saved, originalData: batch[idx] });
-    });
-
-    console.log(`[HomesSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${data?.length || 0}`);
+    if (splitResult.skipped > 0) {
+      console.error(`[HomesSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${splitResult.skipped} rows UNRECOVERABLE after split-retry`);
+    }
+    console.log(`[HomesSave] Listings batch ${Math.floor(i / batchSize) + 1}: ${data.length} saved${splitResult.skipped ? ` (${splitResult.skipped} skipped)` : ''}`);
 
     // ===== Landing 2 hook: reresolve_listings_in_set =====
     // ADDITIVE: any error is caught and logged. The upsert above is already
@@ -853,7 +949,7 @@ async function saveMedia(savedListings: any[], listingsData: any[]) {
       const batch = listingIds.slice(i, i + 200)
       await supabase.from('media').delete().in('listing_id', batch)
     }
-    const batchSize = 400;
+    const batchSize = 150; // BATCH-SIZE-FIX 2026-07-16: 400→150 (see saveListings)
     for (let i = 0; i < mediaRecords.length; i += batchSize) {
       const batch = mediaRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('media').insert(batch);
@@ -940,7 +1036,7 @@ async function saveRooms(savedListings: any[], listingsData: any[]) {
   }
 
   if (roomRecords.length > 0) {
-    const batchSize = 400;
+    const batchSize = 150; // BATCH-SIZE-FIX 2026-07-16: 400→150 (see saveListings)
     for (let i = 0; i < roomRecords.length; i += batchSize) {
       const batch = roomRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('property_rooms').insert(batch);
@@ -982,7 +1078,7 @@ async function saveOpenHouses(savedListings: any[], listingsData: any[]) {
   }
 
   if (openHouseRecords.length > 0) {
-    const batchSize = 400;
+    const batchSize = 150; // BATCH-SIZE-FIX 2026-07-16: 400→150 (see saveListings)
     for (let i = 0; i < openHouseRecords.length; i += batchSize) {
       const batch = openHouseRecords.slice(i, i + batchSize);
       const { error } = await supabase.from('open_houses').insert(batch);
