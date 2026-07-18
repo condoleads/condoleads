@@ -36,6 +36,8 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
   PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
   PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
+  # Platform ops sender for the report step below.
+  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
 jobs:
   geo-full:
@@ -55,7 +57,26 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run geo full weekly (change-window UPSERT, no reconciler)
+        id: sync
         run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-full.ts
         env:
           GEO_FULL_MUNI_FILTER: ${{ inputs.muni_filter }}
           GEO_FULL_LOOKBACK_DAYS: ${{ inputs.lookback_days || '30' }}
+      # Ops report — reuses scripts/sync-report.ts UNMODIFIED (the same
+      # script the daily uses). The only difference is REPORT_TRIGGERED_BY
+      # points at the weekly's sync_history triggered_by value, so the
+      # report windows the correct run. Fires on failure/cancel too.
+      # sync-report.ts's `sync_history` window logic + safety-guard skip
+      # handling apply identically since the weekly writes rows to
+      # sync_history the same way the daily does (via writeHomesSyncHistory).
+      # The weekly is expected to be much longer (~8h vs 25min), which the
+      # report window auto-adjusts to since it looks back 120min from the
+      # newest sync_history row for the given trigger — set to 720min here
+      # so it doesn't clip an 8h run's earliest rows.
+      - name: Send weekly geo-full report
+        if: always()
+        run: npx tsx scripts/sync-report.ts
+        env:
+          REPORT_SYNC_STATUS: ${{ steps.sync.outcome }}
+          REPORT_TRIGGERED_BY: 'github-geo-full'
+          REPORT_RUN_WINDOW_MIN: '720'

@@ -13,6 +13,9 @@ on:
 env:
   NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+  # Platform ops sender key — same Resend account condoleads.ca is verified in.
+  # Used by the report step below. Analytics itself uses no email.
+  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
 jobs:
   analytics:
@@ -25,6 +28,15 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run analytics
+        id: analytics
         run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/analytics-nightly.ts
         env:
           COLD_START: ${{ inputs.cold_start || 'false' }}
+      # Ops report — MUST run even when the analytics step fails / times out /
+      # is cancelled. Silent analytics failure would degrade estimator + Charlie
+      # + geo pages (they read geo_analytics tables).
+      - name: Send analytics report
+        if: always()
+        run: npx tsx scripts/analytics-report.ts
+        env:
+          REPORT_SYNC_STATUS: ${{ steps.analytics.outcome }}
