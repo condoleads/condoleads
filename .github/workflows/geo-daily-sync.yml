@@ -46,6 +46,11 @@ env:
   SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
   PROPTX_RESO_API_URL: ${{ secrets.PROPTX_API_URL }}
   PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
+  # Platform ops sender key. scripts/sync-report.ts imports Resend directly
+  # from the npm package; it does NOT touch any lead-email file
+  # (lib/email/resend.ts, sendTenantEmail.ts, etc. are OFF LIMITS per operator
+  # scope). Same Resend account that has condoleads.ca verified.
+  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
 
 jobs:
   geo-daily:
@@ -59,8 +64,18 @@ jobs:
           node-version: '20'
       - run: npm ci
       - name: Run geo daily (change-driven + reconciler)
+        id: sync
         run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-daily.ts
         env:
           GEO_DAILY_MUNI_FILTER: ${{ inputs.muni_filter }}
           GEO_DAILY_FALLBACK_DAYS: ${{ inputs.fallback_days || '7' }}
           GEO_DAILY_RECONCILE: ${{ inputs.reconcile == 'false' && '0' || '1' }}
+      # Ops report — MUST run even when the sync above fails / times out / is
+      # cancelled. A silent failure is worse than a noisy one. The report
+      # header will read ATTENTION and cite the workflow status.
+      - name: Send morning sync report
+        if: always()
+        run: npx tsx scripts/sync-report.ts
+        env:
+          REPORT_SYNC_STATUS: ${{ steps.sync.outcome }}
+          REPORT_TRIGGERED_BY: 'github-geo-daily'
