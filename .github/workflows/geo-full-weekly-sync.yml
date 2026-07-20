@@ -1,29 +1,53 @@
 name: Geo Full Weekly Sync
 
-# PART 3 — weekly full geo-driven sync (safety net for the daily).
-# Runs scripts/sync-geo-full.ts (added in 36471e1). Per municipality:
-#   1. Pull PropTx WHERE ModificationTimestamp > now - GEO_FULL_LOOKBACK_DAYS
-#      (default 30). Both Residential Freehold and Residential Condo &
-#      Other. Commercial excluded by design.
-#   2. Upsert via saveHomesListings (batch=150 + split-retry + INT4/decimal
-#      clamps from 8b38f5a).
-#   3. NO reconciler here — this pass insertion-covers listings the daily's
-#      cursor-based pull would miss (PropTx-Active-not-in-DB direction).
+# PART 3 + Sunday-chunk fix (2026-07-20):
+# Weekly full geo-driven sync (safety net for the daily). Runs
+# scripts/sync-geo-full.ts (added in 36471e1) with batch=150 + split-retry
+# + INT4/decimal clamps from 8b38f5a. NO reconciler — this pass
+# insertion-covers listings the daily's cursor-based pull would miss.
 #
-# Verified at 506-muni scale 2026-07-15/17: 8h27min wall clock initially,
-# 247k listings pulled, 0 skipped after 8b38f5a fixes, buildings unchanged.
-# Full raw output on commit 8b38f5a.
+# CHUNKED to avoid GitHub Actions' 6-hour job ceiling.
+# ---------------------------------------------------
+# Observed 2026-07-19 unattended run: cancelled at exactly 6h with
+# 437/506 munis completed. Root cause: timeout-minutes was 360 (= GH's
+# ceiling). Fix: split the weekly across 4 sequential Sunday chunks. Each
+# chunk runs scripts/sync-geo-full-week-chunk.ts (NEW), which:
+#   1. Queries sync_history for github-geo-full runs in the last 24h that
+#      have completed_at NOT NULL → those munis are "already done this
+#      cycle" (verified 2026-07-19: 437/437 completed munis had a clean
+#      cursor row; zero interrupted-mid-muni state).
+#   2. Diffs against the 506-target muni set to compute pending.
+#   3. Invokes sync-geo-full.ts with GEO_FULL_MUNI_FILTER = pending list.
+#      scripts/sync-geo-full.ts itself is UNMODIFIED — the wrapper just
+#      hands it a subset via the existing GEO_FULL_MUNI_FILTER env var.
+#
+# Chunk schedule (Sunday 10:00 UTC → Monday 04:00 UTC = 18h window):
+#   Sunday  10:00 UTC   chunk 1 (up to 5h)
+#   Sunday  16:00 UTC   chunk 2 (up to 5h)   [starts 1h after chunk 1's max]
+#   Sunday  22:00 UTC   chunk 3 (up to 5h)   [starts 1h after chunk 2's max]
+#   Monday  04:00 UTC   chunk 4 + REPORT     [starts 1h after chunk 3's max]
+#
+# The report step only runs on the Monday 04:00 UTC chunk (or on manual
+# dispatch), so operators get ONE weekly summary — labeled PASS if all
+# 506 munis got a completed sync_history row, ATTENTION if the tally
+# falls short. Non-final chunks are silent; each writes its own
+# sync_history rows so the final chunk's report sees the full picture.
+#
+# Manual workflow_dispatch override: if inputs.muni_filter is set, the
+# wrapper bypasses chunk logic and forwards the filter unchanged, so
+# operators can still target specific munis on-demand. The report is
+# always sent on manual dispatch (regardless of chunk position).
 
 on:
   schedule:
-    - cron: '0 10 * * 0'   # Sunday 10:00 UTC = 05:00 EST weekly
-                           # 2h AFTER Sunday's Geo Daily (08:00 UTC).
-                           # Daily always finishes well before then (48min max
-                           # observed), so no overlap risk.
+    - cron: '0 10 * * 0'   # Sunday 10:00 UTC  → chunk 1
+    - cron: '0 16 * * 0'   # Sunday 16:00 UTC  → chunk 2
+    - cron: '0 22 * * 0'   # Sunday 22:00 UTC  → chunk 3
+    - cron: '0 4 * * 1'    # Monday 04:00 UTC  → chunk 4 (final + report)
   workflow_dispatch:
     inputs:
       muni_filter:
-        description: 'Optional comma-separated muni names to restrict run to'
+        description: 'Optional comma-separated muni names to restrict run to (bypasses chunk-resume logic when set)'
         required: false
         default: ''
       lookback_days:
@@ -42,41 +66,33 @@ env:
 jobs:
   geo-full:
     runs-on: ubuntu-latest
-    # Observed: 8h27min initial full run. Cap at 720min (12h) — well above
-    # observed max but below GitHub Actions' 6h-per-job soft limit... actually
-    # GH Actions caps at 6h per job on ubuntu-latest for public repos.
-    # Confirmed max is 21600s = 360min. Setting to 360min. If run exceeds,
-    # the muni-level sync_history cursor means a rerun resumes correctly
-    # (per-muni idempotent UPSERT); the resume just re-processes any
-    # already-done munis (safe, wasteful).
-    timeout-minutes: 360
+    # 300min = 5h — safely under GH's 6h hard ceiling. Prior timeout of
+    # 360min hit the ceiling exactly and every big-muni-tail week would
+    # cancel. 5h × 4 chunks = 20h of budget for ~350min of work.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm ci
-      - name: Run geo full weekly (change-window UPSERT, no reconciler)
+      - name: Run geo-full weekly chunk (resumes via sync_history cursor)
         id: sync
-        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-full.ts
+        run: NODE_OPTIONS='--max-old-space-size=6144' npx tsx scripts/sync-geo-full-week-chunk.ts
         env:
           GEO_FULL_MUNI_FILTER: ${{ inputs.muni_filter }}
           GEO_FULL_LOOKBACK_DAYS: ${{ inputs.lookback_days || '30' }}
-      # Ops report — reuses scripts/sync-report.ts UNMODIFIED (the same
-      # script the daily uses). The only difference is REPORT_TRIGGERED_BY
-      # points at the weekly's sync_history triggered_by value, so the
-      # report windows the correct run. Fires on failure/cancel too.
-      # sync-report.ts's `sync_history` window logic + safety-guard skip
-      # handling apply identically since the weekly writes rows to
-      # sync_history the same way the daily does (via writeHomesSyncHistory).
-      # The weekly is expected to be much longer (~8h vs 25min), which the
-      # report window auto-adjusts to since it looks back 120min from the
-      # newest sync_history row for the given trigger — set to 720min here
-      # so it doesn't clip an 8h run's earliest rows.
-      - name: Send weekly geo-full report
-        if: always()
+      # Report — only on the Monday 04:00 UTC chunk (the final chunk of
+      # each week) OR when triggered manually. Non-final chunks are silent.
+      # sync-report.ts's REPORT_RUN_WINDOW_MIN=4320 (72h) covers the full
+      # Sunday-into-Monday span so the report sees every chunk's rows.
+      # The report will read PASS if munis_processed=506, ATTENTION with
+      # the shortfall otherwise (the "only X/506 munis processed" reason
+      # is one of sync-report.ts's built-in ATTENTION triggers).
+      - name: Send weekly geo-full report (final chunk only)
+        if: (github.event.schedule == '0 4 * * 1') || (github.event_name == 'workflow_dispatch')
         run: npx tsx scripts/sync-report.ts
         env:
           REPORT_SYNC_STATUS: ${{ steps.sync.outcome }}
           REPORT_TRIGGERED_BY: 'github-geo-full'
-          REPORT_RUN_WINDOW_MIN: '720'
+          REPORT_RUN_WINDOW_MIN: '4320'
