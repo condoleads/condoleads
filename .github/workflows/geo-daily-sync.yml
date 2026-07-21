@@ -51,6 +51,13 @@ env:
   # (lib/email/resend.ts, sendTenantEmail.ts, etc. are OFF LIMITS per operator
   # scope). Same Resend account that has condoleads.ca verified.
   RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+  # PG-DIRECT-COUNT-FIX 2026-07-21: sync-report.ts uses this to count
+  # mls_listings (1.4M rows) — Supabase's PostgREST times out silently at
+  # ~8s on that table, which broke the sync_report_snapshot write path
+  # (guarded by `if (rowCountAfter != null)`). Without this env, the
+  # snapshot delta stays "not recorded" and the never-decrease invariant
+  # is unmonitored.
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
 jobs:
   geo-daily:

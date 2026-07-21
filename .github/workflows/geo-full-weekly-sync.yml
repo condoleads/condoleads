@@ -62,6 +62,10 @@ env:
   PROPTX_VOW_TOKEN: ${{ secrets.PROPTX_VOW_TOKEN }}
   # Platform ops sender for the report step below.
   RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+  # PG-DIRECT-COUNT-FIX 2026-07-21: sync-report.ts needs pg-direct for
+  # the mls_listings COUNT (Supabase times out at ~8s on 1.4M rows). See
+  # geo-daily-sync.yml for full rationale.
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
 jobs:
   geo-full:

@@ -30,7 +30,41 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
 import { createClient } from '@supabase/supabase-js';
+import { Client as PgClient } from 'pg';
 import { Resend } from 'resend';
+
+// PG-DIRECT-COUNT-FIX 2026-07-21: Supabase's PostgREST count() times out
+// silently at ~8s on the 1.4M-row mls_listings table (verified: returns
+// count=null, error=undefined, elapsed=8754ms). Same problem the
+// scripts/db-vs-proptx-breakdown.js fix worked around by using pg-direct.
+// This helper mirrors that: uses DATABASE_URL for exact counts on big
+// tables when the env is available; falls back to Supabase (which works
+// for small tables like buildings) when it isn't. The count is required
+// for the sync_report_snapshot delta invariant — a null count blocks the
+// INSERT (guarded by `if (rowCountAfter != null)`) and leaves every
+// subsequent report saying "not recorded" for the delta.
+async function countExact(supabase: any, table: string): Promise<number | null> {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const c = new PgClient({ connectionString: url });
+    try {
+      await c.connect();
+      // Set 60s statement timeout for this session — PostgREST's 8s ceiling
+      // doesn't apply to pg-direct but the pool's default statement_timeout
+      // does. Big table counts on 1.4M rows take ~5s on the pooler.
+      await c.query('SET statement_timeout = 60000');
+      const r = await c.query('SELECT COUNT(*)::bigint AS n FROM ' + table);
+      return Number(r.rows[0].n);
+    } catch (e: any) {
+      console.warn(`[sync-report] pg-direct count(${table}) failed: ${e?.message} — falling back to Supabase`);
+    } finally {
+      try { await c.end(); } catch (_) {}
+    }
+  }
+  const { count, error } = await supabase.from(table).select('id', { count: 'exact', head: true });
+  if (error) console.warn(`[sync-report] Supabase count(${table}) error: ${error.message}`);
+  return count ?? null;
+}
 
 const DEFAULT_RECIPIENTS = ['condoleads.ca@gmail.com', 'kingshahone@gmail.com'];
 const DEFAULT_FROM = 'condoleads ops <noreply@condoleads.ca>';
@@ -145,12 +179,8 @@ async function gatherStats(): Promise<RunStats> {
     flippedEstimate = count ?? null;
   }
 
-  const { count: rowCountAfter } = await supabase
-    .from('mls_listings')
-    .select('id', { count: 'exact', head: true });
-  const { count: buildingsAfter } = await supabase
-    .from('buildings')
-    .select('id', { count: 'exact', head: true });
+  const rowCountAfter = await countExact(supabase, 'mls_listings');
+  const buildingsAfter = await countExact(supabase, 'buildings');
 
   // Prior daily-run row count: look up the most recent sync_report_snapshot
   // row if it exists; otherwise "not recorded". This script does NOT create

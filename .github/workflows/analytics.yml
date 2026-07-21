@@ -16,6 +16,12 @@ env:
   # Platform ops sender key — same Resend account condoleads.ca is verified in.
   # Used by the report step below. Analytics itself uses no email.
   RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+  # PG-DIRECT-COUNT-FIX 2026-07-21: analytics-report.ts doesn't currently
+  # count mls_listings (its report is scoped to geo_analytics tables which
+  # fit under Supabase's PostgREST timeout), but plumbing DATABASE_URL here
+  # too keeps env parity with the sync workflows in case a future analytics
+  # report grows to touch big tables.
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
 jobs:
   analytics:
