@@ -37,7 +37,8 @@ const getCachedActiveListings = unstable_cache(
       .select(`
         id, building_id, community_id, listing_id, listing_key, standard_status, transaction_type,
         list_price, close_price, close_date, unit_number, unparsed_address,
-        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+        bedrooms_total, bathrooms_total_integer, property_type, property_subtype,
+        available_in_vow, living_area_range,
         square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
         days_on_market, listing_contract_date, building_area_total,
         association_amenities, association_fee_includes, property_management_company, tax_year,
@@ -65,7 +66,8 @@ const getCachedClosedListings = unstable_cache(
       .select(`
         id, building_id, community_id, listing_id, listing_key, standard_status, transaction_type,
         list_price, close_price, close_date, unit_number, unparsed_address,
-        bedrooms_total, bathrooms_total_integer, property_type, living_area_range,
+        bedrooms_total, bathrooms_total_integer, property_type, property_subtype,
+        available_in_vow, living_area_range,
         square_foot_source, parking_total, locker, association_fee, tax_annual_amount,
         days_on_market, listing_contract_date, building_area_total,
         association_amenities, association_fee_includes, property_management_company, tax_year
@@ -397,22 +399,56 @@ export default async function BuildingPage({ params }: { params: { slug: string 
   const amenities = extractAmenities(allListings)
   const feeIncludes = extractFeeIncludes(allListings)
 
-  const avgSalePrice = activeSales.length > 0
-    ? calculateAverage(activeSales.map(l => l.list_price))
-    : closedSales.length > 0
-    ? calculateAverage(closedSales.map(l => l.list_price))
+  // BUILDINGSTATS-FIX 2026-07-22: prior compute used list_price (asking) for
+  // "Highest/Lowest Sale", mean for maintenance, no window, no VOW/subtype
+  // filter -- see Q2/Q3 audit. Fields now match geo_analytics conventions:
+  //   - VOW-only, dwelling subtypes only (no parking/locker rows)
+  //   - Highest/Lowest use close_price on rolling 12mo Closed sales
+  //   - Median maintenance with 0<fee<5000 outlier bound
+  // Filters applied post-query so BuildingHighlights + TransactionHistory
+  // still see raw listings for their tables.
+  const DWELLING_SUBTYPES = [
+    'Condo Apartment', 'Condo Townhouse', 'Co-op Apartment',
+    'Common Element Condo', 'Leasehold Condo', 'Detached Condo',
+    'Detached', 'Semi-Detached', 'Semi-Detached ',
+    'Att/Row/Townhouse', 'Link', 'Duplex', 'Triplex', 'Fourplex', 'Multiplex'
+  ]
+  const _statsWindowStart = new Date()
+  _statsWindowStart.setDate(_statsWindowStart.getDate() - 365)
+  const STATS_WINDOW_CUTOFF = _statsWindowStart.toISOString().split('T')[0]
+
+  const statsActiveSales = activeSales.filter(l =>
+    l.available_in_vow === true &&
+    l.property_subtype && DWELLING_SUBTYPES.includes(l.property_subtype)
+  )
+  const statsClosedSales = closedSales.filter(l =>
+    l.available_in_vow === true &&
+    l.property_subtype && DWELLING_SUBTYPES.includes(l.property_subtype) &&
+    l.close_date && l.close_date >= STATS_WINDOW_CUTOFF &&
+    l.close_price && l.close_price > 0
+  )
+
+  const closePrices = statsClosedSales.map(l => l.close_price!)
+  const highestSale = closePrices.length > 0 ? Math.max(...closePrices) : 0
+  const lowestSale = closePrices.length > 0 ? Math.min(...closePrices) : 0
+
+  const avgSalePrice = statsActiveSales.length > 0
+    ? calculateAverage(statsActiveSales.map(l => l.list_price).filter((p): p is number => !!p && p > 0))
+    : closePrices.length > 0
+    ? calculateAverage(closePrices)
     : 0
 
-  const salesPrices = closedSales.map(l => l.list_price)
-  const highestSale = salesPrices.length > 0 ? Math.max(...salesPrices) : 0
-  const lowestSale = salesPrices.length > 0 ? Math.min(...salesPrices) : 0
-
-  const listingsWithFees = allListings.filter(l => l.association_fee && l.association_fee > 0)
-  const avgMaintenanceFee = listingsWithFees.length > 0
-    ? calculateAverage(listingsWithFees.map(l => l.association_fee!))
+  const feePool = [...statsActiveSales, ...statsClosedSales]
+    .map(l => l.association_fee)
+    .filter((f): f is number => !!f && f > 0 && f < 5000)
+    .sort((a, b) => a - b)
+  const avgMaintenanceFee = feePool.length > 0
+    ? (feePool.length % 2 === 1
+        ? feePool[Math.floor(feePool.length / 2)]
+        : (feePool[feePool.length / 2 - 1] + feePool[feePool.length / 2]) / 2)
     : 0
 
-  const inventoryRate = calculateInventoryRate(activeSales.length, building.total_units)
+  const inventoryRate = calculateInventoryRate(statsActiveSales.length, building.total_units)
 
   const closedSalesWithDays = closedSales.filter(l => l.days_on_market !== null && l.days_on_market !== undefined)
   const avgDaysOnMarketSale = closedSalesWithDays.length > 0
