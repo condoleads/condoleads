@@ -328,7 +328,7 @@ function TrackPanel({ row, geoType }: { row: TrackRow; geoType: Props['geoType']
               fontSize: 11, color: 'rgba(255,255,255,0.4)',
               letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4,
             }}>
-              Median PSF{row.psf_trend_pct != null && (
+              Median PSF (est.){row.psf_trend_pct != null && (
                 <span style={{
                   marginLeft: 8, fontSize: 10, fontWeight: 700,
                   color: row.psf_trend_pct >= 0 ? 'rgba(110,231,183,0.85)' : 'rgba(248,113,113,0.85)',
@@ -339,6 +339,9 @@ function TrackPanel({ row, geoType }: { row: TrackRow; geoType: Props['geoType']
             </div>
             <div style={{ fontSize: 20, fontWeight: 700 }}>
               ${Number(psf).toFixed(0)}
+              <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.5)', marginLeft: 6 }}>
+                /sqft
+              </span>
             </div>
           </div>
         )}
@@ -751,7 +754,7 @@ function renderValueMigration(v: ValueMigration): JSX.Element | null {
   const parentGeoType = v.parent_geo_type && String(v.parent_geo_type).length > 0 ? String(v.parent_geo_type) : null
   if (!thisPsf && !parentPsf && !idx && !direction) return null
   return (
-    <InsightBlock title="Median PSF vs parent area">
+    <InsightBlock title="Median PSF (est.) vs parent area">
       <div>
         {thisPsf && <>Median PSF: <strong>{thisPsf}</strong></>}
         {idx && (

@@ -86,34 +86,65 @@ function roundInt(n: number | null | undefined): number | null {
 // SQFT CALCULATION
 // =====================================================
 
-export function calculateSqft(source: string | null, range: string | null): number {
-  if (source) {
-    const match = source.match(/(?:^|[^0-9])([1-9][0-9]{2,3})(?:[^0-9]|$)/)
-    if (match) {
-      const val = parseInt(match[1])
-      if (val >= 100 && val <= 5000) return val
-    }
+// SQFT-FIX 2026-07-23: previously read square_foot_source (a text label like
+// "Owner Provided") and regex-extracted a number out of it -- produced fake
+// "exact" values, and IGNORED building_area_total entirely. The recon showed
+// rows with exact=1734, range="1100-1500" storing calc=1300 method="range_midpoint"
+// (real number discarded), plus rows with exact=null storing method="exact"
+// (number invented from label text). Fix: prefer building_area_total (the actual
+// integer sqft column) when non-null and within sane bounds; fall back to range
+// midpoint (comprehensive map, unified with bulk-update-sqft.ts); fallback last.
+export const RANGE_MIDPOINTS: Record<string, number> = {
+  '< 700':      600,
+  '0-499':      250,
+  '500-599':    550,
+  '600-699':    650,
+  '700-799':    750,
+  '700-1100':   900,
+  '800-899':    850,
+  '900-999':    950,
+  '1000-1199':  1100,
+  '1100-1500':  1300,
+  '1200-1399':  1300,
+  '1400-1599':  1500,
+  '1500-2000':  1750,
+  '1600-1799':  1700,
+  '1800-1999':  1900,
+  '2000-2249':  2125,
+  '2000-2500':  2250,
+  '2250-2499':  2375,
+  '2500-2749':  2625,
+  '2500-3000':  2750,
+  '2750-2999':  2875,
+  '3000-3249':  3125,
+  '3000-3500':  3250,
+  '3250-3499':  3375,
+  '3500-3749':  3625,
+  '3500-5000':  4250,
+  '3750-3999':  3875,
+  '4000-4249':  4125,
+  '4250-4499':  4375,
+  '4500-4749':  4625,
+  '5000 +':     5000,
+}
+
+export function calculateSqft(
+  buildingAreaTotal: number | null,
+  range: string | null
+): number {
+  if (buildingAreaTotal != null && buildingAreaTotal >= 100 && buildingAreaTotal <= 20000) {
+    return buildingAreaTotal
   }
-  const midpoints: Record<string, number> = {
-    '0-499': 400, '500-599': 550, '600-699': 650, '700-799': 750,
-    '800-899': 850, '900-999': 950, '1000-1199': 1100, '1200-1399': 1300,
-    '1400-1599': 1500, '1600-1799': 1700, '1800-1999': 1900,
-    '2000-2249': 2125, '2250-2499': 2375, '2500-2999': 2750
-  }
-  if (range && midpoints[range]) return midpoints[range]
-  if (range && range.startsWith('3000')) return 3250
+  if (range && RANGE_MIDPOINTS[range]) return RANGE_MIDPOINTS[range]
   return 700
 }
 
-export function getSqftMethod(source: string | null, range: string | null): string {
-  if (source) {
-    const match = source.match(/(?:^|[^0-9])([1-9][0-9]{2,3})(?:[^0-9]|$)/)
-    if (match) {
-      const val = parseInt(match[1])
-      if (val >= 100 && val <= 5000) return 'exact'
-    }
-  }
-  if (range && range !== '') return 'midpoint'
+export function getSqftMethod(
+  buildingAreaTotal: number | null,
+  range: string | null
+): string {
+  if (buildingAreaTotal != null && buildingAreaTotal >= 100 && buildingAreaTotal <= 20000) return 'exact'
+  if (range && RANGE_MIDPOINTS[range]) return 'range_midpoint'
   return 'fallback'
 }
 
@@ -121,6 +152,16 @@ export function getSqftMethod(source: string | null, range: string | null): stri
 // STAGE 1: PSF POPULATION
 // =====================================================
 
+// SQFT-FIX 2026-07-23: now reads building_area_total (was omitted from SELECT
+// entirely). Targets rows that need work in three cases:
+//   (a) calculated_sqft IS NULL                       -- never populated
+//   (b) building_area_total > 0 AND sqft_method != 'exact'  -- ignored the exact value
+//   (c) price_per_sqft IS NULL AND standard_status='Closed' -- bulk-update-sqft
+//       filled calculated_sqft from range but never wrote price_per_sqft,
+//       so those rows are invisible to the medianPsf filter downstream.
+// Filter (b) + (c) via cursor pagination in a separate backfill script -- this
+// online path handles ongoing rows via case (a) only; the one-off backfill
+// sweeps historical (b)/(c) rows and reuses the same helpers below.
 export async function populatePSF(): Promise<{ updated: number }> {
   let totalUpdated = 0
   let hasMore = true
@@ -128,7 +169,7 @@ export async function populatePSF(): Promise<{ updated: number }> {
   while (hasMore) {
     const { data: records, error: fetchErr } = await supabase
       .from('mls_listings')
-      .select('id, square_foot_source, living_area_range, close_price, standard_status, close_date')
+      .select('id, building_area_total, living_area_range, close_price, standard_status, close_date')
       .in('property_subtype', CONDO_SUBTYPES)
       .is('calculated_sqft', null)
       .limit(500)
@@ -140,8 +181,8 @@ export async function populatePSF(): Promise<{ updated: number }> {
     if (!records || records.length === 0) { hasMore = false; break }
 
     for (const r of records) {
-      const sqft = calculateSqft(r.square_foot_source, r.living_area_range)
-      const method = getSqftMethod(r.square_foot_source, r.living_area_range)
+      const sqft = calculateSqft(r.building_area_total, r.living_area_range)
+      const method = getSqftMethod(r.building_area_total, r.living_area_range)
       const isClosed = r.standard_status === 'Closed' && r.close_price > 0 && r.close_date <= todayStr()
       const psf = isClosed ? Math.round((r.close_price / sqft) * 100) / 100 : null
 
