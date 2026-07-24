@@ -7,6 +7,7 @@
 'use client'
 import React from 'react'
 import { useState, useEffect } from 'react'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface WalliamAgentCardProps {
   // Page context for agent resolution — pass whatever is available
@@ -47,13 +48,31 @@ function ContactForm({ agentEmail, tenantId, listingId, buildingId }: {
   const submit = async () => {
     if (!name || !email) return
     setSending(true)
-    await fetch('/api/walliam/contact', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, phone, message, tenant_id: tenantId, listing_id: listingId, building_id: buildingId, source: 'walliam_agent_card' }),
-    })
-    setSent(true)
-    setSending(false)
+    // GA4-GAPS-FIX 2026-07-24: previously fired-and-forgot without checking
+    // the response. Now capture res.ok + parse success flag so the GA event
+    // only fires on confirmed success, and setSent(true) matches reality.
+    try {
+      const res = await fetch('/api/walliam/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, phone, message, tenant_id: tenantId, listing_id: listingId, building_id: buildingId, source: 'walliam_agent_card' }),
+      })
+      const ok = res.ok
+      let dataOk = false
+      try { dataOk = !!(await res.json())?.success } catch { dataOk = ok }
+      if (ok && dataOk) {
+        trackEvent(
+          'agent_card_submit',
+          { has_listing: !!listingId, has_building: !!buildingId },
+          { contactEmail: email },
+        )
+        setSent(true)
+      }
+    } catch {
+      // preserve prior UX: keep the send button responsive; no crash
+    } finally {
+      setSending(false)
+    }
   }
 
   if (sent) return (

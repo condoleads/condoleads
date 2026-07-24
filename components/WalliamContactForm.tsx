@@ -5,6 +5,7 @@
 'use client'
 
 import { useState } from 'react'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface Props {
   tenantId: string
@@ -62,6 +63,15 @@ export default function WalliamContactForm({
       })
       const data = await res.json()
       if (data.success) {
+        // GA4-GAPS-FIX 2026-07-24: fire conversion event only on confirmed
+        // successful submit (data.success === true), never on click. Test-
+        // email guard via opts.contactEmail — dev/smoke submits are silently
+        // dropped so Ads bidding isn't polluted.
+        trackEvent(
+          'contact_form_submit',
+          { source, has_building: !!building_id, has_listing: !!listing_id },
+          { contactEmail: email },
+        )
         setSubmitted(true)
       } else {
         setError(data.error || 'Something went wrong')

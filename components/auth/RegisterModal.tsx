@@ -25,6 +25,21 @@ import { createPortal } from 'react-dom'
 import { X, Mail, Lock, User, Phone, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase/client'
 import { joinTenant } from '@/app/actions/joinTenant'
+import { trackEvent, type TrackedEventName } from '@/lib/analytics/track'
+
+// GA4-GAPS-FIX 2026-07-24: map registrationSource -> GA4 event for the four
+// operator-listed gap surfaces. Sources NOT in this map (property_header,
+// property_gallery, home_history_modal, estimator, ai_chat, home_page,
+// vip_block, walliam_onboarding_banner, etc.) do not fire a dedicated event
+// here -- they're either covered elsewhere (estimator/vip via their own
+// components) or intentionally out of scope for this fix.
+const REGISTRATION_SOURCE_TO_EVENT: Record<string, TrackedEventName> = {
+  'site_header':          'header_cta_submit',
+  'site_header_mobile':   'header_cta_submit',
+  'walliam_charlie_gate': 'chat_gate_submit',
+  'listing_card':         'listing_card_submit',
+  'home_listing_card':    'listing_card_submit',
+}
 
 interface RegisterModalProps {
   isOpen: boolean
@@ -116,6 +131,18 @@ export default function RegisterModal({
         console.error('[RegisterModal] joinTenant failed:', result.error)
       } else if (result.isNewToTenant) {
         console.log('[RegisterModal] new tenant relationship — lead created, agent assigned, welcome sent')
+        // GA4-GAPS-FIX 2026-07-24: fire conversion only when joinTenant
+        // reports isNewToTenant (i.e. a new lead row was created for this
+        // tenant). Returning users get no event -- correct, no conversion
+        // happened. Test-email guard on the visitor's typed email.
+        const mappedEvent = REGISTRATION_SOURCE_TO_EVENT[registrationSource]
+        if (mappedEvent) {
+          trackEvent(
+            mappedEvent,
+            { source: registrationSource },
+            { contactEmail: email },
+          )
+        }
       } else {
         console.log('[RegisterModal] returning user — no-op')
       }

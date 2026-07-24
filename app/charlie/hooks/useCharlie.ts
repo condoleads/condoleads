@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTenantId } from '@/hooks/useTenantId'
 import { useCreditSession } from '@/components/credits/CreditSessionContext'
+import { trackEvent } from '@/lib/analytics/track'
 // W-CHARLIE-INCHAT-TAXMATCH-HYDRATE (2026-06-16): direct-hydrate path
 // stashes plan-email response.backfilledTaxMatch here so the in-chat
 // Tax-Matched block can render without depending on its self-fetch
@@ -607,6 +608,14 @@ export function useCharlie() {
           .then(planEmailData => {
             if (planEmailData?.userEmailSent === false) {
               setState(s => ({ ...s, planEmailWarning: "Plan generated — we couldn't email it to you. Save this page or contact your agent." }))
+            }
+            // GA4-GAPS-FIX 2026-07-24: fire conversion event for the auto-
+            // created Charlie chat lead (source=<tenant>_charlie). Only fires
+            // once the plan-email POST resolves with a truthy response body.
+            // No email guard here -- Charlie requires auth so user email
+            // isn't in this scope; the guard is opt-in per call site.
+            if (planEmailData && planEmailData.userEmailSent !== undefined) {
+              trackEvent('chat_lead_submit', { plan_type: data.type })
             }
             // W-CHARLIE-INCHAT-CONVERGENCE (2026-06-16): hydrate the
             // in-chat panel from the server's backfilled artifacts so
