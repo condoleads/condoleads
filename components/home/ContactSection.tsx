@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Send, Phone, Mail, MessageSquare, Sparkles } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface ContactSectionProps {
   agent: {
@@ -23,7 +24,7 @@ export function ContactSection({ agent }: ContactSectionProps) {
     e.preventDefault()
     setIsSubmitting(true)
     try {
-      await submitLeadFromForm({
+      const leadResult = await submitLeadFromForm({
         contactEmail: formData.email,
         contactName: formData.name,
         contactPhone: formData.phone || undefined,
@@ -37,6 +38,16 @@ export function ContactSection({ agent }: ContactSectionProps) {
         activityData: { name: formData.name, phone: formData.phone, message: formData.message, source: 'homepage' },
         agentId: agent.id
       })
+      // GA4-GAPS-FIX batch 2 (2026-07-24): fire only on confirmed lead-create
+      // success. leadResult shape from submitLeadFromForm -> getOrCreateLead
+      // is { success: boolean, ... }. No PII in params.
+      if (leadResult && (leadResult as any).success) {
+        trackEvent(
+          'contact_section_submit',
+          { source: 'contact_form' },
+          { contactEmail: formData.email },
+        )
+      }
       setSubmitted(true)
     } catch (error) {
       console.error('Error submitting form:', error)

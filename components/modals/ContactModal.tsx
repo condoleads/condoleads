@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { X, Send, Loader2 } from 'lucide-react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface ContactModalProps {
   isOpen: boolean
@@ -103,6 +104,15 @@ export default function ContactModal({
     setIsSubmitting(false)
 
     if (result.success) {
+      // GA4-GAPS-FIX batch 2 (2026-07-24): pass the source variant so GA4 can
+      // segment which of the 6 modal contexts converted (home_page,
+      // building_page, property_inquiry, message_agent, sale_offer,
+      // building_visit). No PII in params.
+      trackEvent(
+        'contact_modal_submit',
+        { source, has_building: !!buildingId, has_listing: !!listingId },
+        { contactEmail: formData.email },
+      )
       setSuccess(true)
       setTimeout(() => {
         onClose()

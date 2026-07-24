@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface ListYourUnitProps {
   buildingName: string
@@ -60,11 +61,17 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     })
     console.log(' EVALUATION RESULT:', result)
     if (result.success) {
+      // GA4-GAPS-FIX batch 2 (2026-07-24): seller-intent conversion.
+      trackEvent(
+        'seller_evaluation_submit',
+        { source: 'sale_evaluation_request' },
+        { contactEmail: evaluationForm.email },
+      )
       setEvaluationSuccess(true)
       setEvaluationForm({ name: '', email: '', phone: '' })
       setTimeout(() => setEvaluationSuccess(false), 5000)
     }
-    
+
     setIsEvaluationSubmitting(false)
   }
 
@@ -104,6 +111,12 @@ export default function ListYourUnit({ buildingName, buildingId, agentId }: List
     })
     console.log('??? VISIT RESULT:', result)
     if (result.success) {
+      // GA4-GAPS-FIX batch 2 (2026-07-24): buyer-intent conversion.
+      trackEvent(
+        'building_visit_submit',
+        { source: 'building_visit_request' },
+        { contactEmail: visitForm.email },
+      )
       setVisitSuccess(true)
       setVisitForm({ name: '', email: '', phone: '', date: '', time: '' })
       setTimeout(() => setVisitSuccess(false), 5000)

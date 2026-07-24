@@ -46,13 +46,24 @@ export type TrackedEventName =
   | 'chat_vip_questionnaire'
   | 'vip_access_grant'
   | 'page_view'
-  // GA4-GAPS-FIX 2026-07-24:
-  | 'chat_lead_submit'      // useCharlie plan-email auto-write (source=walliam_charlie / aily_charlie)
-  | 'chat_gate_submit'      // RegisterModal via CharlieWidget gate (registrationSource=walliam_charlie_gate)
-  | 'contact_form_submit'   // WalliamContactForm (source=walliam_contact_form)
-  | 'agent_card_submit'     // WalliamAgentCard (source=walliam_agent_card)
-  | 'header_cta_submit'     // RegisterModal via SiteHeader (registrationSource=site_header|site_header_mobile)
-  | 'listing_card_submit'   // RegisterModal via ListingCard/HomeListingCard (registrationSource=listing_card|home_listing_card)
+  // GA4-GAPS-FIX 2026-07-24 (batch 1, shipped d2453e8):
+  | 'chat_lead_submit'         // useCharlie plan-email auto-write (source=walliam_charlie / aily_charlie)
+  | 'chat_gate_submit'         // RegisterModal via CharlieWidget gate + ChatLocked (registrationSource=walliam_charlie_gate | ai_chat)
+  | 'contact_form_submit'      // WalliamContactForm (source=walliam_contact_form)
+  | 'agent_card_submit'        // WalliamAgentCard (source=walliam_agent_card)
+  | 'header_cta_submit'        // RegisterModal via SiteHeader (registrationSource=site_header | site_header_mobile)
+  | 'listing_card_submit'      // RegisterModal via ListingCard / HomeListingCard / GeoListingCard (registrationSource=listing_card | home_listing_card | geo_listing_card)
+  // GA4-GAPS-FIX 2026-07-24 (batch 2, this commit):
+  | 'hero_cta_submit'          // RegisterModal via HomePage hero (registrationSource=homepage_hero)
+  | 'gated_content_submit'     // RegisterModal via PropertyHeader / PropertyGallery / GatedContent / HomeAddressHistoryModal (registrationSource=property_header | property_gallery | property_detail | home_history_modal). Which gate is passed as a param.
+  | 'sold_gate_submit'         // RegisterModal via GeoListingSection / NeighbourhoodListingSection (registrationSource=walliam_sold_gate)
+  | 'listing_gate_submit'      // RegisterModal via ListingSection (registrationSource=walliam_listing_gate)
+  | 'contact_modal_submit'     // ContactModal (source variant passed as param — home_page | building_page | property_inquiry | message_agent | sale_offer | building_visit)
+  | 'contact_section_submit'   // ContactSection on homepage (source=contact_form)
+  | 'seller_evaluation_submit' // ListYourUnit -> market evaluation form (source=sale_evaluation_request)
+  | 'building_visit_submit'    // ListYourUnit -> building visit form (source=building_visit_request)
+  | 'unit_history_submit'      // UnitHistoryModal (source=unit_history_inquiry)
+  | 'appointment_submit'       // AppointmentForm in Charlie (source=`${sourceKey}_appointment`)
 
 // GA4-GAPS-FIX 2026-07-24: test-email guard. The DB previously accumulated
 // 308/309 test leads (finaltest@, @t3b-smoke.local, @example.com, dev email

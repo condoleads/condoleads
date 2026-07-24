@@ -7,6 +7,7 @@ import { getStatusDisplay } from '@/lib/utils/dom'
 import { useAuth } from '@/components/auth/AuthContext'
 import { submitLeadFromForm } from '@/app/actions/submitLeadFromForm'
 import { submitActivityFromForm } from '@/app/actions/submitActivityFromForm'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface HistoryItem {
   id: string
@@ -131,7 +132,7 @@ export default function UnitHistoryModal({
       }
 
       try {
-        await submitLeadFromForm({
+        const leadResult = await submitLeadFromForm({
           agentId,
           contactName: contactForm.name,
           contactEmail: contactForm.email,
@@ -146,6 +147,16 @@ export default function UnitHistoryModal({
           },
           forceNew: true
         })
+        // GA4-GAPS-FIX batch 2 (2026-07-24): fire only on confirmed lead
+        // creation. Skipped when submitLeadFromForm throws (catch below) or
+        // returns success=false.
+        if (leadResult && (leadResult as any).success) {
+          trackEvent(
+            'unit_history_submit',
+            { source: 'unit_history_inquiry', history_count: history.length },
+            { contactEmail: contactForm.email },
+          )
+        }
       } catch (error) {
         console.error('Lead creation error:', error)
       }

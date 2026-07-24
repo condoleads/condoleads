@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { useTenantId } from '@/hooks/useTenantId'
+import { trackEvent } from '@/lib/analytics/track'
 
 interface Props {
   type: 'buyer' | 'seller'
@@ -145,6 +146,14 @@ export default function AppointmentForm({ type, listings = [], userId, sessionId
       })
       const data = await res.json()
       if (data.success) {
+        // GA4-GAPS-FIX batch 2 (2026-07-24): highest-intent Charlie signal --
+        // user actually booked a time. Fire only after data.success. Email
+        // guard applies for the rare test user with a matching-pattern email.
+        trackEvent(
+          'appointment_submit',
+          { intent: type, property_count: type === 'buyer' ? selectedProps.length : 0 },
+          { contactEmail: email },
+        )
         // F-EMAIL-CALLER-RETURNS-SUCCESS-ON-FAIL (Phase 1): if confirmation
         // email didn't reach the user, show an honest note + keep the form
         // visible so they can read it. Booking row was still saved.

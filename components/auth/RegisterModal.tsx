@@ -33,12 +33,29 @@ import { trackEvent, type TrackedEventName } from '@/lib/analytics/track'
 // vip_block, walliam_onboarding_banner, etc.) do not fire a dedicated event
 // here -- they're either covered elsewhere (estimator/vip via their own
 // components) or intentionally out of scope for this fix.
+// GA4-GAPS-FIX batch 2 (2026-07-24): extended to cover the remaining 8
+// registration-modal surfaces the code sweep found uncovered. Reuse of an
+// existing event is deliberate where two sources describe the SAME concept:
+//   - ai_chat + walliam_charlie_gate     -> chat_gate_submit (both are chat-context gates)
+//   - geo_listing_card + listing_card + home_listing_card -> listing_card_submit
+// New events only where the concept is genuinely distinct.
 const REGISTRATION_SOURCE_TO_EVENT: Record<string, TrackedEventName> = {
+  // batch 1 (d2453e8):
   'site_header':          'header_cta_submit',
   'site_header_mobile':   'header_cta_submit',
   'walliam_charlie_gate': 'chat_gate_submit',
   'listing_card':         'listing_card_submit',
   'home_listing_card':    'listing_card_submit',
+  // batch 2 (this commit):
+  'ai_chat':              'chat_gate_submit',      // ChatLocked (reuse: chat-context gate)
+  'homepage_hero':        'hero_cta_submit',       // HomePageComprehensiveClient(V2) VIPAIAccess
+  'geo_listing_card':     'listing_card_submit',   // GeoListingCard (reuse: same UX as other listing cards)
+  'walliam_sold_gate':    'sold_gate_submit',      // GeoListingSection + NeighbourhoodListingSection
+  'walliam_listing_gate': 'listing_gate_submit',   // ListingSection
+  'property_header':      'gated_content_submit',  // PropertyHeader
+  'property_gallery':     'gated_content_submit',  // PropertyGallery
+  'property_detail':      'gated_content_submit',  // GatedContent
+  'home_history_modal':   'gated_content_submit',  // HomeAddressHistoryModal
 }
 
 interface RegisterModalProps {
